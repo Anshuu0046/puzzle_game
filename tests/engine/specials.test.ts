@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { Board, type BoardEvent, bestMove, findGroups, specialPosition, hasMove, isValidSwap, posKey, shuffleBoard, Rng } from '../../src/engine';
+import {
+  Board,
+  type BoardEvent,
+  bestMove,
+  findGroups,
+  specialPosition,
+  hasMove,
+  isValidSwap,
+  posKey,
+  shuffleBoard,
+  Rng,
+} from '../../src/engine';
 import { P, eventsOf, gameFrom, replay, signature } from './helpers';
 
 const keys = (cells: readonly { row: number; col: number }[]) => cells.map(posKey).sort();

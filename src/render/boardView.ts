@@ -79,6 +79,8 @@ export class BoardView {
   /** Jelly layers per cell as last reported by the engine. */
   private jelly: number[] = [];
   private readonly selectionRing = new Graphics();
+  private readonly cursorRing = new Graphics();
+  private cursorPos: Pos | null = null;
   private readonly pieceLayer = new Container();
   private readonly pieceMask = new Graphics();
 
@@ -114,6 +116,7 @@ export class BoardView {
       this.jellyLayer,
       this.selectionRing,
       this.pieceLayer,
+      this.cursorRing,
       this.pieceMask,
       this.fx.root,
       this.particles.root,
@@ -250,6 +253,7 @@ export class BoardView {
       }
     }
     this.select(null);
+    this.setCursor(null);
     this.redrawStatic();
   }
 
@@ -375,6 +379,37 @@ export class BoardView {
     return this.selected;
   }
 
+  get cursor(): Pos | null {
+    return this.cursorPos;
+  }
+
+  /** Keyboard focus ring; null hides it. */
+  setCursor(p: Pos | null): void {
+    this.cursorPos = p;
+    this.drawCursor();
+  }
+
+  inBounds(p: Pos): boolean {
+    return p.row >= 0 && p.row < this.rows && p.col >= 0 && p.col < this.cols;
+  }
+
+  firstPlayable(): Pos | null {
+    const i = this.playable.indexOf(true);
+    return i < 0 ? null : { row: Math.floor(i / this.cols), col: i % this.cols };
+  }
+
+  private drawCursor(): void {
+    const g = this.cursorRing;
+    g.clear();
+    if (!this.cursorPos) return;
+    const s = this.cellSize;
+    const inset = Math.round(s * 0.02);
+    const x = this.cursorPos.col * s + inset;
+    const y = this.cursorPos.row * s + inset;
+    g.roundRect(x, y, s - inset * 2, s - inset * 2, Math.round(s * 0.22)).stroke({ color: 0xffffff, width: Math.max(4, s * 0.1) });
+    g.roundRect(x, y, s - inset * 2, s - inset * 2, Math.round(s * 0.22)).stroke({ color: 0x8a63ff, width: Math.max(2, s * 0.05) });
+  }
+
   /** Queues events for playback. Resolves when they (and everything queued before) have played. */
   play(events: readonly BoardEvent[]): Promise<void> {
     const gen = this.generation;
@@ -444,7 +479,9 @@ export class BoardView {
         await Promise.all(
           cells.map((p) => {
             const n = this.nodeAt(p);
-            return n ? gsap.to(n.node.scale, { x: 1.15, y: 1.15, duration: MOTION.matchPulse, ease: 'power2.out', yoyo: true, repeat: 1 }) : null;
+            return n
+              ? gsap.to(n.node.scale, { x: 1.15, y: 1.15, duration: MOTION.matchPulse, ease: 'power2.out', yoyo: true, repeat: 1 })
+              : null;
           }),
         );
         return;
@@ -790,6 +827,7 @@ export class BoardView {
       }
     }
     this.drawJelly();
+    this.drawCursor();
     // Pieces entering from above stay hidden until they reach the board.
     this.pieceMask.rect(-pad, 0, this.cols * s + pad * 2, this.rows * s + pad).fill(0xffffff);
   }

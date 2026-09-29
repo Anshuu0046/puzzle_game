@@ -31,12 +31,7 @@ export function generateBoard(shape: readonly string[], colors: readonly Color[]
  * Fills every empty playable cell, row-major, with a color that does not complete a match.
  * Returns false (leaving the board partially filled) if some cell had no safe color.
  */
-export function fillWithoutMatches(
-  board: Board,
-  colors: readonly Color[],
-  rng: Rng,
-  makePiece: (p: Pos, color: Color) => Piece,
-): boolean {
+export function fillWithoutMatches(board: Board, colors: readonly Color[], rng: Rng, makePiece: (p: Pos, color: Color) => Piece): boolean {
   for (const p of board.positions) {
     if (board.get(p)) continue;
     const safe = rng.shuffle([...colors]).find((color) => {

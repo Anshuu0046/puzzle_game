@@ -58,9 +58,39 @@ export class BoardInput {
     const d = this.drag;
     this.drag = null;
     if (!d || d.used || e.pointerId !== d.id || this.isLocked()) return;
-    // A tap: select, deselect, or swap with the previously selected neighbor.
+    this.view.setCursor(null);
+    this.tap(d.cell);
+  }
+
+  /**
+   * Keyboard play: arrows move a cursor over the board, Enter/Space act like a tap (select, then
+   * pick a neighbor to swap). Returns true when the key was used.
+   */
+  handleKey(e: KeyboardEvent): boolean {
+    const dirs: Record<string, [number, number]> = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
+    const dir = dirs[e.key];
+    if (!dir && e.key !== 'Enter' && e.key !== ' ') return false;
+    if (this.isLocked()) return true;
+    const cursor = this.view.cursor ?? this.view.selection ?? this.view.firstPlayable();
+    if (!cursor) return true;
+    if (!this.view.cursor) {
+      this.view.setCursor(cursor);
+      if (dir) return true;
+    }
+    if (dir) {
+      // Step over holes to the next playable cell in that direction.
+      let next = { row: cursor.row + dir[0], col: cursor.col + dir[1] };
+      while (this.view.inBounds(next) && !this.view.isPlayable(next)) next = { row: next.row + dir[0], col: next.col + dir[1] };
+      if (this.view.isPlayable(next)) this.view.setCursor(next);
+      return true;
+    }
+    this.tap(cursor);
+    return true;
+  }
+
+  /** Select, deselect, or swap with the previously selected neighbor. */
+  private tap(cell: Pos): void {
     const selected = this.view.selection;
-    const cell = d.cell;
     if (selected && selected.row === cell.row && selected.col === cell.col) {
       this.view.select(null);
     } else if (selected && Math.abs(selected.row - cell.row) + Math.abs(selected.col - cell.col) === 1) {

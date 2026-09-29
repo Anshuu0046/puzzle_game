@@ -27,11 +27,20 @@ function fuzz(shape: readonly string[], colors: number, seeds: number, turns: nu
 
       const ids = after.pieces().map(({ piece }) => piece.id);
       expect(new Set(ids).size, ctx).toBe(ids.length);
-      expect(after.pieces().every(({ piece }) => (piece.color ?? 0) < colors), ctx).toBe(true);
+      expect(
+        after.pieces().every(({ piece }) => (piece.color ?? 0) < colors),
+        ctx,
+      ).toBe(true);
 
       const scored = eventsOf(result.events, 'scored');
-      expect(scored.reduce((s, e) => s + e.points, 0), ctx).toBe(game.score - scoreBefore);
-      expect(scored.map((e) => e.cascade), ctx).toEqual(scored.map((_, i) => i + 1));
+      expect(
+        scored.reduce((s, e) => s + e.points, 0),
+        ctx,
+      ).toBe(game.score - scoreBefore);
+      expect(
+        scored.map((e) => e.cascade),
+        ctx,
+      ).toEqual(scored.map((_, i) => i + 1));
 
       if (result.shuffled) shuffles++;
       maxCascade = Math.max(maxCascade, result.cascades);

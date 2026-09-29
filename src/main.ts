@@ -1,14 +1,24 @@
+// Self-hosted Google Fonts (latin subset only): display = Fredoka, UI = Nunito.
+import '@fontsource/fredoka/latin-500.css';
+import '@fontsource/fredoka/latin-600.css';
+import '@fontsource/fredoka/latin-700.css';
+import '@fontsource/nunito/latin-600.css';
+import '@fontsource/nunito/latin-700.css';
+import '@fontsource/nunito/latin-800.css';
 import './ui/style.css';
+// Lets Pixi run under a strict Content Security Policy (no eval / new Function).
+import 'pixi.js/unsafe-eval';
 import { GameAudio } from './audio/audio';
 import { LEVELS, levelById } from './data/levels';
 import { SaveStore, browserStorage } from './data/save';
 import { Board, Game, type Pos } from './engine';
 import { BoardStage } from './render/stage';
 import { App } from './ui/app';
+import { mountFpsMeter } from './ui/fps';
 
 declare global {
   interface Window {
-    /** Dev-only hooks used by the Playwright screenshot script. */
+    /** Test hooks for the Playwright walk-through (dev server, or any build opened with ?e2e). */
     __sugarBloom?: {
       readonly app: App;
       readonly game: Game | null;
@@ -22,9 +32,18 @@ declare global {
   }
 }
 
+function registerServiceWorker(): void {
+  if (!import.meta.env.PROD || !('serviceWorker' in navigator)) return;
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch((err: unknown) => console.warn('offline mode unavailable', err));
+  });
+}
+
 async function boot(): Promise<void> {
   const params = new URLSearchParams(location.search);
   const seedParam = params.get('seed');
+  // Canvas text (combo words) needs the display font loaded before first use.
+  void document.fonts?.load('700 32px Fredoka').catch(() => undefined);
   const stage = await BoardStage.create(document.getElementById('stage')!);
   const audio = new GameAudio();
   const save = new SaveStore(browserStorage(), LEVELS.length);
@@ -40,9 +59,10 @@ async function boot(): Promise<void> {
   // Browsers only allow sound after a user gesture.
   window.addEventListener('pointerdown', () => audio.startMusic(), { once: true });
   app.start();
+  if (params.has('fps')) mountFpsMeter(stage.app.ticker);
   document.body.classList.add('ready');
 
-  if (import.meta.env.DEV) {
+  if (import.meta.env.DEV || params.has('e2e')) {
     window.__sugarBloom = {
       app,
       get game() {
@@ -63,6 +83,7 @@ async function boot(): Promise<void> {
   }
 }
 
+registerServiceWorker();
 boot().catch((err: unknown) => {
   console.error(err);
   const fallback = document.getElementById('boot-error');

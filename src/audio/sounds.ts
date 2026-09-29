@@ -2,19 +2,7 @@ import { type Tone, midi } from './synth';
 
 /** Sound effect names used by the game. */
 export type SfxName =
-  | 'swap'
-  | 'invalid'
-  | 'match'
-  | 'special'
-  | 'line'
-  | 'burst'
-  | 'prism'
-  | 'bigCombo'
-  | 'shuffle'
-  | 'win'
-  | 'lose'
-  | 'button'
-  | 'star';
+  'swap' | 'invalid' | 'match' | 'special' | 'line' | 'burst' | 'prism' | 'bigCombo' | 'shuffle' | 'win' | 'lose' | 'button' | 'star';
 
 const chime = (note: number, at: number, gain: number, dur = 0.3): Tone[] => [
   { freq: midi(note), wave: 'sine', at, dur, gain },
@@ -45,7 +33,9 @@ export const SFX: Record<SfxName, () => Tone[]> = {
     { freq: 90, freqEnd: 50, wave: 'triangle', at: 0.02, dur: 0.3, gain: 0.4 },
   ],
   prism: () =>
-    [84, 88, 91, 96, 91, 95, 100, 103].flatMap((n, i) => [{ freq: midi(n), wave: 'sine' as const, at: i * 0.05, dur: 0.4, gain: 0.35, vibrato: 0.15 }]),
+    [84, 88, 91, 96, 91, 95, 100, 103].flatMap((n, i) => [
+      { freq: midi(n), wave: 'sine' as const, at: i * 0.05, dur: 0.4, gain: 0.35, vibrato: 0.15 },
+    ]),
   bigCombo: () => [
     ...[60, 64, 67, 72, 76, 79, 84].flatMap((n, i) => chime(n, i * 0.05, 0.4, 0.5)),
     { freq: 120, freqEnd: 45, wave: 'sine', at: 0, dur: 0.5, gain: 0.8 },

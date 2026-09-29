@@ -8,6 +8,8 @@ import { PieceTextures } from './pieceArt';
  */
 export class BoardStage {
   private textureRequest = 0;
+  /** Called if the browser drops the WebGL context (GPU reset, too many tabs). */
+  onContextLost: () => void = () => {};
 
   private constructor(
     readonly app: Application,
@@ -32,7 +34,9 @@ export class BoardStage {
     const view = new BoardView(textures);
     app.stage.addChild(view.root);
     app.ticker.add((t) => view.update(Math.min(0.05, t.deltaMS / 1000)));
-    return new BoardStage(app, view, host, textures);
+    const stage = new BoardStage(app, view, host, textures);
+    app.canvas.addEventListener('webglcontextlost', () => stage.onContextLost());
+    return stage;
   }
 
   /** Shows the canvas and runs the render loop only while a level is on screen. */

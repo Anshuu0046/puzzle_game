@@ -45,6 +45,7 @@ export class App {
   private readonly map: MapScreen;
   private readonly hud: Hud;
   private readonly modal: Modal;
+  private readonly input: BoardInput;
 
   constructor(private readonly d: AppDeps) {
     this.title = new TitleScreen(
@@ -67,7 +68,11 @@ export class App {
       if (e.type === 'bonusMove') this.hud.setMoves(e.movesLeft);
     };
     view.onScore = (total) => this.hud.setScore(total);
-    new BoardInput(view, (a, b) => this.onSwap(a, b), () => this.locked || view.busy);
+    this.input = new BoardInput(
+      view,
+      (a, b) => this.onSwap(a, b),
+      () => this.locked || view.busy,
+    );
 
     d.audio.setSfx(d.save.settings.sfx);
     d.audio.setMusicEnabled(d.save.settings.music);
@@ -78,8 +83,18 @@ export class App {
     window.addEventListener('pointerdown', () => this.poke(), { capture: true });
     window.addEventListener('keydown', (e) => {
       this.poke();
-      if (e.key === 'Escape' && this.screen === 'level' && !this.modal.isOpen) this.pause();
+      if (this.screen !== 'level' || this.modal.isOpen) return;
+      if (e.key === 'Escape') this.pause();
+      // Enter/Space on a focused button (e.g. Pause) belong to that button.
+      else if ((e.key === 'Enter' || e.key === ' ') && e.target instanceof HTMLButtonElement) return;
+      else if (this.input.handleKey(e)) {
+        e.preventDefault();
+        // Arrow keys move play to the board: release focus from HUD buttons so Enter reaches it.
+        if (e.key.startsWith('Arrow') && document.activeElement instanceof HTMLElement) document.activeElement.blur();
+      }
     });
+    // Pixi restores the GPU context itself; pausing keeps the player from acting on a blank board.
+    d.stage.onContextLost = () => this.pause();
     document.addEventListener('visibilitychange', () => {
       d.audio.suspend(document.hidden);
       if (document.hidden) this.pause();
@@ -155,7 +170,15 @@ export class App {
     const game = this.game;
     const view = this.d.stage.view;
     if (!game || this.locked || view.busy || game.status !== 'playing') return;
-    const result = game.trySwap(a, b);
+    let result: ReturnType<Game['trySwap']>;
+    try {
+      result = game.trySwap(a, b);
+    } catch (err) {
+      // Should never happen with validated levels; recover by restarting rather than freezing.
+      console.error('turn failed, restarting level', err);
+      this.openLevel(this.level!.id, true);
+      return;
+    }
     if (result.events.length === 0) return;
     if (result.accepted) this.hud.setMoves(game.movesLeft);
     if (game.status !== 'playing') this.locked = true;

@@ -52,7 +52,13 @@ function toggle(label: string, on: boolean, onChange: (on: boolean) => void): HT
   return el;
 }
 
-export function introContent(level: LevelConfig, goals: readonly GoalProgress[], record: LevelRecord | undefined, onPlay: () => void, onBack: () => void): Node[] {
+export function introContent(
+  level: LevelConfig,
+  goals: readonly GoalProgress[],
+  record: LevelRecord | undefined,
+  onPlay: () => void,
+  onBack: () => void,
+): Node[] {
   return [
     h('p', { class: 'modal__eyebrow' }, level.name),
     h('h2', { class: 'modal__title' }, `Level ${level.id}`),
@@ -77,7 +83,13 @@ export function pauseContent(level: LevelConfig, goals: readonly GoalProgress[],
     h('p', { class: 'modal__eyebrow' }, `Level ${level.id} · ${level.name}`),
     goalList(goals, true),
     h('div', { class: 'modal__toggles' }, toggle('Sound effects', settings.sfx, a.onSfx), toggle('Music', settings.music, a.onMusic)),
-    h('div', { class: 'modal__actions' }, button('Resume', a.onResume), button('Restart level', a.onRestart, 'secondary'), button('World map', a.onMap, 'text')),
+    h(
+      'div',
+      { class: 'modal__actions' },
+      button('Resume', a.onResume),
+      button('Restart level', a.onRestart, 'secondary'),
+      button('World map', a.onMap, 'text'),
+    ),
   ];
 }
 
@@ -123,14 +135,18 @@ export interface SettingsActions {
 
 export function settingsContent(settings: Settings, a: SettingsActions): Node[] {
   let armed = false;
-  const reset = button('Reset progress', () => {
-    if (!armed) {
-      armed = true;
-      reset.textContent = 'Tap again to erase all progress';
-      return;
-    }
-    a.onReset();
-  }, 'text');
+  const reset = button(
+    'Reset progress',
+    () => {
+      if (!armed) {
+        armed = true;
+        reset.textContent = 'Tap again to erase all progress';
+        return;
+      }
+      a.onReset();
+    },
+    'text',
+  );
   return [
     h('h2', { class: 'modal__title' }, 'Settings'),
     h('div', { class: 'modal__toggles' }, toggle('Sound effects', settings.sfx, a.onSfx), toggle('Music', settings.music, a.onMusic)),

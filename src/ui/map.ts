@@ -47,7 +47,12 @@ export class MapScreen {
     const starPill = h('div', { class: 'map__stars', 'aria-label': 'Stars collected' }, svg(STAR_SVG, 'map__stars-icon'), this.starCount);
     this.track = h('div', { class: 'map__track' });
     this.scroller = h('div', { class: 'map__scroll' }, this.track);
-    this.el = h('section', { class: 'screen map', 'aria-label': 'World map' }, h('header', { class: 'map__bar' }, back, starPill, settings), this.scroller);
+    this.el = h(
+      'section',
+      { class: 'screen map', 'aria-label': 'World map' },
+      h('header', { class: 'map__bar' }, back, starPill, settings),
+      this.scroller,
+    );
     window.addEventListener('resize', () => {
       if (this.save && !this.el.hidden) this.render(this.save);
     });

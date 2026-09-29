@@ -1,18 +1,21 @@
 // Starts the Vite dev server and walks the whole game at mobile and desktop sizes, through the real
 // input layer, saving screenshots to screenshots/ and failing on any check or page error.
 //
-//   npm run shots            # seed 12345
+//   npm run shots            # dev server, seed 12345
+//   npm run shots:prod       # production build under its CSP, plus service worker + offline checks
 //   SEED=7 npm run shots
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
-import { createServer } from 'vite';
+import { build, createServer, preview } from 'vite';
 
 const SEED = process.env.SEED ?? '12345';
+const PROD = process.env.TARGET === 'prod';
 const OUT = new URL('../screenshots/', import.meta.url);
 const VIEWPORTS = [
   { name: 'mobile', viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true },
   { name: 'desktop', viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, isMobile: false, hasTouch: false },
 ];
+const LANDSCAPE = { name: 'landscape', viewport: { width: 844, height: 390 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true };
 
 // Every special on one board, no matches. (3,4) Line Blaster + (3,3) Burst Bomb is a combo.
 const SHOWCASE = `
@@ -48,9 +51,16 @@ async function launch() {
 
 async function run() {
   await mkdir(OUT, { recursive: true });
-  const server = await createServer({ server: { port: 5199, strictPort: false }, logLevel: 'error' });
-  await server.listen();
-  const url = `${server.resolvedUrls.local[0]}?seed=${SEED}`;
+  let server;
+  if (PROD) {
+    await build({ logLevel: 'error' });
+    server = await preview({ preview: { port: 4199, strictPort: false }, logLevel: 'error' });
+  } else {
+    server = await createServer({ server: { port: 5199, strictPort: false }, logLevel: 'error' });
+    await server.listen();
+  }
+  const prefix = PROD ? 'prod-' : '';
+  const url = `${server.resolvedUrls.local[0]}?e2e&seed=${SEED}`;
   const browser = await launch();
   let failed = false;
 
@@ -67,7 +77,7 @@ async function run() {
       let step = 0;
       const shot = async (label) => {
         step++;
-        await page.screenshot({ path: new URL(`${vp.name}-${String(step).padStart(2, '0')}-${label}.png`, OUT).pathname });
+        await page.screenshot({ path: new URL(`${prefix}${vp.name}-${String(step).padStart(2, '0')}-${label}.png`, OUT).pathname });
       };
       const check = (label, ok, detail = '') => {
         console.log(`${vp.name}: ${label} ${ok ? 'OK' : 'FAILED'}${detail ? ` (${detail})` : ''}`);
@@ -75,7 +85,10 @@ async function run() {
       };
       const waitIdle = () => page.waitForFunction(() => window.__sugarBloom?.isIdle() === true, null, { timeout: 20000 });
       const swap = async (a, b) => {
-        const [pa, pb] = await page.evaluate(([x, y]) => [window.__sugarBloom.cellToClient(x), window.__sugarBloom.cellToClient(y)], [a, b]);
+        const [pa, pb] = await page.evaluate(
+          ([x, y]) => [window.__sugarBloom.cellToClient(x), window.__sugarBloom.cellToClient(y)],
+          [a, b],
+        );
         if (vp.hasTouch) {
           // Tap-tap on touch screens.
           await page.touchscreen.tap(pa.x, pa.y);
@@ -103,7 +116,10 @@ async function run() {
       await button('Play').click();
       await page.waitForTimeout(400);
       await shot('map');
-      check('map shows 30 levels, 1 unlocked', (await page.locator('.map-node').count()) === 30 && (await page.locator('.map-node:not([disabled])').count()) === 1);
+      check(
+        'map shows 30 levels, 1 unlocked',
+        (await page.locator('.map-node').count()) === 30 && (await page.locator('.map-node:not([disabled])').count()) === 1,
+      );
 
       await button('Level 1').click();
       await modal('Level 1').waitFor();
@@ -134,8 +150,16 @@ async function run() {
         hudMoves: document.querySelector('.hud__moves .hud__value')?.textContent,
         hudScore: document.querySelector('.hud__score .hud__value')?.textContent,
       }));
-      check('swap through input', after.moves === before.moves - 1 && after.score > before.score, `moves ${before.moves}→${after.moves}, score ${before.score}→${after.score}`);
-      check('HUD in sync', after.hudMoves === String(after.moves) && after.hudScore === after.score.toLocaleString('en-US'), `${after.hudMoves} / ${after.hudScore}`);
+      check(
+        'swap through input',
+        after.moves === before.moves - 1 && after.score > before.score,
+        `moves ${before.moves}→${after.moves}, score ${before.score}→${after.score}`,
+      );
+      check(
+        'HUD in sync',
+        after.hudMoves === String(after.moves) && after.hudScore === after.score.toLocaleString('en-US'),
+        `${after.hudMoves} / ${after.hudScore}`,
+      );
 
       await page.getByRole('button', { name: 'Pause' }).click();
       await modal('Paused').waitFor();
@@ -143,6 +167,23 @@ async function run() {
       await shot('pause');
       await button('Resume').click();
       await page.waitForTimeout(300);
+
+      if (!vp.hasTouch) {
+        // Keyboard play on a scripted board: arrows to (6,2), Enter, ArrowDown, Enter swaps it with (7,2).
+        await page.evaluate((text) => window.__sugarBloom.loadBoard(text, 2), PLAIN);
+        const movesBefore = await page.evaluate(() => window.__sugarBloom.game.movesLeft);
+        await page.keyboard.press('ArrowDown'); // first press shows the cursor at the top-left
+        for (let r = 0; r < 6; r++) await page.keyboard.press('ArrowDown');
+        for (let c = 0; c < 2; c++) await page.keyboard.press('ArrowRight');
+        await page.keyboard.press('Enter');
+        await page.keyboard.press('ArrowDown');
+        await shot('keyboard');
+        await page.keyboard.press('Enter');
+        await page.waitForTimeout(300);
+        await waitIdle();
+        const movesAfter = await page.evaluate(() => window.__sugarBloom.game.movesLeft);
+        check('keyboard swap', movesAfter === movesBefore - 1, `moves ${movesBefore}→${movesAfter}`);
+      }
 
       // Hint on a board with every special.
       await page.evaluate((text) => window.__sugarBloom.loadBoard(text, 1), SHOWCASE);
@@ -191,10 +232,44 @@ async function run() {
       await shot('lose');
       check('lose card', true);
 
+      if (PROD) {
+        await page.evaluate(() => navigator.serviceWorker.ready);
+        await page.reload({ waitUntil: 'networkidle' });
+        const controlled = await page.evaluate(() => navigator.serviceWorker.controller !== null);
+        check('service worker controls the page', controlled);
+        await context.setOffline(true);
+        await page.reload({ waitUntil: 'load' }).catch(() => undefined);
+        const offline = await page
+          .waitForFunction(() => document.body.classList.contains('ready'), null, { timeout: 15000 })
+          .then(() => true)
+          .catch(() => false);
+        if (offline) await shot('offline');
+        check('loads offline', offline);
+        await context.setOffline(false);
+      }
+
       if (errors.length) console.log(`${vp.name}: page errors:\n  ${errors.join('\n  ')}`);
       failed ||= errors.length > 0;
       await context.close();
     }
+
+    // Landscape phone: the board must still fit under the HUD.
+    const context = await browser.newContext({ ...LANDSCAPE, ignoreHTTPSErrors: true });
+    const page = await context.newPage();
+    await page.goto(url, { waitUntil: 'networkidle' });
+    await page.waitForFunction(() => window.__sugarBloom !== undefined, null, { timeout: 15000 });
+    await page.evaluate(() => window.__sugarBloom.app.openLevel(1, true));
+    await page.waitForTimeout(800);
+    await page.screenshot({ path: new URL(`${prefix}landscape-level.png`, OUT).pathname });
+    const fits = await page.evaluate(() => {
+      const top = window.__sugarBloom.cellToClient({ row: 0, col: 0 });
+      const bottom = window.__sugarBloom.cellToClient({ row: 7, col: 7 });
+      const hud = document.getElementById('hud').getBoundingClientRect().bottom;
+      return top.y > hud && bottom.y < innerHeight && bottom.x < innerWidth;
+    });
+    console.log(`landscape: board fits ${fits ? 'OK' : 'FAILED'}`);
+    failed ||= !fits;
+    await context.close();
   } finally {
     await browser.close();
     await server.close();

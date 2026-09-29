@@ -30,16 +30,7 @@ export interface Spawn {
  *   of that color into that special, then they all go off; boardWipe: Prism + Prism
  */
 export type Effect =
-  | 'row'
-  | 'column'
-  | 'burst'
-  | 'colorClear'
-  | 'cross'
-  | 'tripleCross'
-  | 'megaBurst'
-  | 'prismLines'
-  | 'prismBursts'
-  | 'boardWipe';
+  'row' | 'column' | 'burst' | 'colorClear' | 'cross' | 'tripleCross' | 'megaBurst' | 'prismLines' | 'prismBursts' | 'boardWipe';
 
 /**
  * Everything that happens on the board, in order. The renderer plays these as an animation

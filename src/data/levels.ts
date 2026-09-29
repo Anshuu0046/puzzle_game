@@ -32,7 +32,8 @@ export function validateLevel(raw: unknown): LevelConfig {
   if (typeof l.name !== 'string' || l.name === '') fail('name is required');
   if (!Array.isArray(l.shape) || l.shape.length < 3 || l.shape.length > 10) fail('shape must have 3-10 rows');
   const cols = l.shape![0]!.length;
-  if (cols < 3 || cols > 10 || l.shape!.some((r) => typeof r !== 'string' || r.length !== cols)) fail('shape rows must be equal, 3-10 wide');
+  if (cols < 3 || cols > 10 || l.shape!.some((r) => typeof r !== 'string' || r.length !== cols))
+    fail('shape rows must be equal, 3-10 wide');
   if (!isInt(l.colors, 3) || l.colors! > MAX_COLORS) fail(`colors must be 3..${MAX_COLORS}`);
   if (!isInt(l.moves, 1)) fail('moves must be positive');
   const stars = l.stars;
@@ -53,7 +54,10 @@ export function validateLevel(raw: unknown): LevelConfig {
     }
   }
   if (l.jelly) {
-    if (l.jelly.length !== l.shape!.length || l.jelly.some((r, i) => r.length !== cols || [...r].some((ch, c) => ch !== '.' && l.shape![i]![c] === '#'))) {
+    if (
+      l.jelly.length !== l.shape!.length ||
+      l.jelly.some((r, i) => r.length !== cols || [...r].some((ch, c) => ch !== '.' && l.shape![i]![c] === '#'))
+    ) {
       fail('jelly map must match the shape and avoid holes');
     }
     if (!l.jelly.some((r) => /[1-9]/.test(r))) fail('jelly map has no jelly');

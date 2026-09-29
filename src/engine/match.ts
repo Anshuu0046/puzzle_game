@@ -29,10 +29,20 @@ export interface MatchGroup {
 export function findRuns(board: Board): Run[] {
   const runs: Run[] = [];
   for (let r = 0; r < board.rows; r++) {
-    scanLine(board, Array.from({ length: board.cols }, (_, c) => pos(r, c)), true, runs);
+    scanLine(
+      board,
+      Array.from({ length: board.cols }, (_, c) => pos(r, c)),
+      true,
+      runs,
+    );
   }
   for (let c = 0; c < board.cols; c++) {
-    scanLine(board, Array.from({ length: board.rows }, (_, r) => pos(r, c)), false, runs);
+    scanLine(
+      board,
+      Array.from({ length: board.rows }, (_, r) => pos(r, c)),
+      false,
+      runs,
+    );
   }
   return runs;
 }

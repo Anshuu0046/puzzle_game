@@ -95,7 +95,9 @@ export class Hud {
     const render = () => {
       this.score.textContent = Math.round(this.shown.score).toLocaleString();
       this.fill.style.width = `${Math.min(100, (this.shown.score / this.stars[2]) * 100)}%`;
-      this.meter.querySelectorAll<HTMLElement>('.hud__star').forEach((s, i) => s.classList.toggle('hud__star--lit', this.shown.score >= this.stars[i]!));
+      this.meter
+        .querySelectorAll<HTMLElement>('.hud__star')
+        .forEach((s, i) => s.classList.toggle('hud__star--lit', this.shown.score >= this.stars[i]!));
     };
     if (!animate) {
       this.shown.score = score;

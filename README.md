@@ -13,13 +13,18 @@ npm run dev        # http://127.0.0.1:5173
 
 ## Scripts
 
-| Command | What it does |
-| --- | --- |
-| `npm run dev` | Vite dev server with hot reload |
-| `npm test` | Vitest: engine rules, levels (bot must be able to win each), save system, audio synth |
-| `npm run build` | Type-check (`tsc --noEmit`) and production build into `dist/` |
-| `npm run preview` | Serve the production build |
-| `npm run shots` | Playwright walk-through at 390×844 and 1440×900, screenshots into `screenshots/` |
+| Command              | What it does                                                                               |
+| -------------------- | ------------------------------------------------------------------------------------------ |
+| `npm run dev`        | Vite dev server with hot reload                                                            |
+| `npm test`           | Vitest: engine rules, levels (bot must be able to win each), save system, audio synth      |
+| `npm run build`      | Type-check (`tsc --noEmit`) and production build into `dist/`                              |
+| `npm run preview`    | Serve the production build                                                                 |
+| `npm run shots`      | Playwright walk-through at 390×844 and 1440×900, screenshots into `screenshots/`           |
+| `npm run shots:prod` | The same walk-through on the production build, plus CSP, service worker and offline checks |
+| `npm run format`     | Prettier                                                                                   |
+| `npm run icons`      | Re-render the PNG app icons from `public/icons/icon.svg`                                   |
+
+Add `?fps` to the URL for an on-screen frame-rate readout when testing on real devices.
 
 Level tuning report: `BALANCE=1 npx vitest run tests/levels/balance.test.ts --disableConsoleIntercept`.
 

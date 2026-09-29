@@ -96,7 +96,13 @@ describe('goals', () => {
   it('needs every goal to win', () => {
     const game = Game.fromBoard(
       Board.parse(HOLE),
-      { ...LEVEL, goals: [{ kind: 'collect', color: 0, count: 3 }, { kind: 'score', target: 100_000 }] },
+      {
+        ...LEVEL,
+        goals: [
+          { kind: 'collect', color: 0, count: 3 },
+          { kind: 'score', target: 100_000 },
+        ],
+      },
       1,
     );
     game.trySwap(P(2, 2), P(3, 2));

@@ -45,7 +45,6 @@ export const pos = (row: number, col: number): Pos => ({ row, col });
 
 export const samePos = (a: Pos, b: Pos): boolean => a.row === b.row && a.col === b.col;
 
-export const isAdjacent = (a: Pos, b: Pos): boolean =>
-  Math.abs(a.row - b.row) + Math.abs(a.col - b.col) === 1;
+export const isAdjacent = (a: Pos, b: Pos): boolean => Math.abs(a.row - b.row) + Math.abs(a.col - b.col) === 1;
 
 export const posKey = (p: Pos): string => `${p.row},${p.col}`;

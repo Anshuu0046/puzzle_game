@@ -97,7 +97,13 @@ export class Particles {
     }
   }
 
-  private spawn(kind: Kind, x: number, y: number, tint: number, o: { vx: number; vy: number; size: number; life: number; gravity: number }): void {
+  private spawn(
+    kind: Kind,
+    x: number,
+    y: number,
+    tint: number,
+    o: { vx: number; vy: number; size: number; life: number; gravity: number },
+  ): void {
     if (this.live.length >= MAX_PARTICLES) return;
     const sprite = this.pool.pop() ?? new Sprite();
     sprite.texture = this.textures[kind];

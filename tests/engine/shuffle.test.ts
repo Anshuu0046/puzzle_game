@@ -16,8 +16,14 @@ describe('shuffle', () => {
     const moves = shuffleBoard(board, [0, 1, 2], new Rng(4));
     expect(hasMatch(board)).toBe(false);
     expect(hasMove(board)).toBe(true);
-    const idsBefore = before.pieces().map(({ piece }) => piece.id).sort((a, b) => a - b);
-    const idsAfter = board.pieces().map(({ piece }) => piece.id).sort((a, b) => a - b);
+    const idsBefore = before
+      .pieces()
+      .map(({ piece }) => piece.id)
+      .sort((a, b) => a - b);
+    const idsAfter = board
+      .pieces()
+      .map(({ piece }) => piece.id)
+      .sort((a, b) => a - b);
     expect(idsAfter).toEqual(idsBefore);
     expect(moves).toHaveLength(25);
   });

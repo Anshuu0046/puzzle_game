@@ -13,4 +13,3 @@ export function botPlay(level: LevelConfig, seed: number): { won: boolean; score
   if (game.canFinale) game.finale();
   return { won: game.status === 'won', score: game.score, stars: game.stars, movesLeft };
 }
-
