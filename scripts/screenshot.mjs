@@ -137,6 +137,10 @@ async function run() {
           `HUD ${hudOk ? 'OK' : 'MISMATCH'} (${after.hudMoves} / ${after.hudScore})`,
       );
       if (errors.length) console.log(`${vp.name}: page errors:\n  ${errors.join('\n  ')}`);
+      const audio = await page.evaluate(() => window.__sugarBloom.audioLoaded());
+      const audioOk = audio.total > 0 && audio.loaded === audio.total;
+      console.log(`${vp.name}: audio ${audioOk ? 'OK' : 'FAILED'} (${audio.loaded}/${audio.total} effects decoded)`);
+      failed ||= !audioOk;
       const comboOk = await specialsScenario(page, vp.name);
       console.log(`${vp.name}: special combo ${comboOk ? 'OK' : 'FAILED'}`);
       failed ||= !swapped || !hudOk || !comboOk || errors.length > 0;

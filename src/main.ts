@@ -1,5 +1,6 @@
 import './ui/style.css';
 import { Application } from 'pixi.js';
+import { GameAudio } from './audio/audio';
 import { LEVELS } from './data/levels';
 import { Board, Game, type Pos } from './engine';
 import { BoardInput } from './render/boardInput';
@@ -25,6 +26,7 @@ declare global {
       /** Replaces the board with a scripted layout (see Board.parse). */
       loadBoard(text: string): void;
       showHint(): void;
+      audioLoaded(): { loaded: number; total: number };
     };
   }
 }
@@ -54,6 +56,16 @@ async function boot(): Promise<void> {
   let textures = await PieceTextures.create(64);
   const view = new BoardView(textures);
   app.stage.addChild(view.root);
+  app.ticker.add((t) => view.update(Math.min(0.05, t.deltaMS / 1000)));
+  const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+  view.reducedMotion = motionQuery.matches;
+  motionQuery.addEventListener('change', () => (view.reducedMotion = motionQuery.matches));
+
+  const audio = new GameAudio();
+  view.onEvent = (e) => audio.onBoardEvent(e);
+  // Browsers only allow sound after a user gesture.
+  window.addEventListener('pointerdown', () => audio.startMusic(), { once: true });
+  document.addEventListener('visibilitychange', () => audio.suspend(document.hidden));
 
   const showLevel = () => {
     view.setBoard(game.board);
@@ -121,7 +133,10 @@ async function boot(): Promise<void> {
     if (result.events.length === 0) return;
     if (result.accepted) hud.setMoves(game.movesLeft);
     void view.play(result.events).then(() => {
-      if (game.status !== 'playing') overlay.show(game.status === 'won', game.score, restart);
+      if (game.status !== 'playing') {
+        audio.play(game.status === 'won' ? 'win' : 'lose');
+        overlay.show(game.status === 'won', game.score, restart);
+      }
       else scheduleHint();
     });
   };
@@ -143,6 +158,7 @@ async function boot(): Promise<void> {
         const move = game.hint();
         if (move) view.showHint(move);
       },
+      audioLoaded: () => audio.loadedCount(),
     };
   }
 }

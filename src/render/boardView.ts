@@ -1,10 +1,12 @@
 import { gsap } from 'gsap';
-import { Container, Graphics, Rectangle, Sprite } from 'pixi.js';
+import { Container, Graphics, Rectangle, Sprite, Text } from 'pixi.js';
 import { type Board, type BoardEvent, type Move, type Piece, type Pos, posKey } from '../engine';
 import { FxLayer } from './fx';
 import { MOTION } from './motion';
+import { Particles } from './particles';
 import type { PieceTextures } from './pieceArt';
 import { BOARD, PIECE_COLORS } from './theme';
+import { cascadeWord, comboWord } from './words';
 
 type EventOf<T extends BoardEvent['type']> = Extract<BoardEvent, { type: T }>;
 
@@ -29,7 +31,22 @@ interface PieceNode {
   sprite: Sprite;
   /** Already playing its clear animation (hit by a blast before the step's 'cleared' event). */
   popped?: boolean;
+  /** Sprite scale that fits the cell; idle wobble oscillates around it. */
+  baseScale: number;
+  /** Wobble phase so pieces don't breathe in lockstep. */
+  phase: number;
 }
+
+/** Screen shake strength (fraction of a cell) and duration (s) per effect. */
+const SHAKE: Partial<Record<string, [number, number]>> = {
+  burst: [0.1, 0.25],
+  cross: [0.06, 0.2],
+  tripleCross: [0.16, 0.35],
+  megaBurst: [0.22, 0.45],
+  prismLines: [0.14, 0.4],
+  prismBursts: [0.2, 0.45],
+  boardWipe: [0.28, 0.6],
+};
 
 export interface Rect {
   x: number;
@@ -44,6 +61,18 @@ export interface Rect {
  */
 export class BoardView {
   readonly root = new Container();
+  /** Everything visual lives here so screen shake can offset it without moving the hit area. */
+  private readonly content = new Container();
+  private readonly particles = new Particles();
+  private readonly textLayer = new Container();
+  private word: Text | null = null;
+  private lastClearCenter = { x: 0, y: 0 };
+  private time = 0;
+  private shakeLeft = 0;
+  private shakeDuration = 1;
+  private shakeAmp = 0;
+  /** Reduced motion: no shake or wobble, fewer particles. */
+  private reduced = false;
   private readonly panel = new Graphics();
   private readonly tiles = new Graphics();
   private readonly selectionRing = new Graphics();
@@ -72,7 +101,105 @@ export class BoardView {
 
   constructor(private textures: PieceTextures) {
     this.pieceLayer.mask = this.pieceMask;
-    this.root.addChild(this.panel, this.tiles, this.selectionRing, this.pieceLayer, this.pieceMask, this.fx.root);
+    this.content.addChild(
+      this.panel,
+      this.tiles,
+      this.selectionRing,
+      this.pieceLayer,
+      this.pieceMask,
+      this.fx.root,
+      this.particles.root,
+      this.textLayer,
+    );
+    this.root.addChild(this.content);
+  }
+
+  set reducedMotion(on: boolean) {
+    this.reduced = on;
+    this.particles.density = on ? 0.4 : 1;
+  }
+
+  /** Per-frame work: idle wobble, particles and shake. */
+  update(dt: number): void {
+    this.time += dt;
+    this.particles.update(dt);
+    if (!this.reduced) {
+      for (const n of this.nodes.values()) {
+        const amp = n.piece.special === 'none' ? 0.018 : 0.04;
+        const w = Math.sin(this.time * 2.6 + n.phase);
+        n.sprite.scale.set(n.baseScale * (1 + amp * w), n.baseScale * (1 - amp * w));
+      }
+    }
+    if (this.shakeLeft > 0) {
+      this.shakeLeft = Math.max(0, this.shakeLeft - dt);
+      const k = (this.shakeLeft / this.shakeDuration) ** 2 * this.shakeAmp;
+      this.content.position.set((Math.random() * 2 - 1) * k, (Math.random() * 2 - 1) * k);
+    } else if (this.content.x !== 0 || this.content.y !== 0) {
+      this.content.position.set(0, 0);
+    }
+  }
+
+  shake(strength: number, duration: number): void {
+    if (this.reduced) return;
+    this.shakeAmp = Math.max(this.shakeLeft > 0 ? this.shakeAmp : 0, strength * this.cellSize);
+    this.shakeDuration = Math.max(duration, this.shakeLeft);
+    this.shakeLeft = this.shakeDuration;
+  }
+
+  /** Big cheer across the board (cascades, combos). Replaces any word still showing. */
+  showWord(text: string): void {
+    if (this.word && !this.word.destroyed) {
+      gsap.killTweensOf([this.word, this.word.scale]);
+      this.word.destroy();
+    }
+    const s = this.cellSize;
+    const word = new Text({
+      text,
+      style: {
+        fontFamily: 'Fredoka, "Baloo 2", "Trebuchet MS", sans-serif',
+        fontWeight: '700',
+        fontSize: Math.round(s * 0.95),
+        fill: 0xffffff,
+        stroke: { color: 0xff4d8a, width: Math.max(4, Math.round(s * 0.14)), join: 'round' },
+        dropShadow: { color: 0x7a2458, alpha: 0.35, blur: 4, distance: Math.round(s * 0.08), angle: Math.PI / 2 },
+        letterSpacing: 1,
+      },
+    });
+    word.anchor.set(0.5);
+    word.position.set((this.cols * s) / 2, (this.rows * s) / 2);
+    word.scale.set(0.3);
+    word.rotation = -0.06;
+    this.textLayer.addChild(word);
+    this.word = word;
+    gsap
+      .timeline({ onComplete: () => void (word.destroyed || word.destroy()) })
+      .to(word.scale, { x: 1, y: 1, duration: 0.35, ease: 'back.out(3)' })
+      .to(word, { rotation: 0.03, duration: 0.35, ease: 'sine.inOut' }, 0)
+      .to(word, { y: word.y - s * 0.6, alpha: 0, duration: 0.4, ease: 'power2.in' }, 0.75);
+  }
+
+  /** "+120" floating up from where pieces were cleared. */
+  private scorePopup(points: number, cascade: number): void {
+    const s = this.cellSize;
+    const t = new Text({
+      text: `+${points.toLocaleString()}`,
+      style: {
+        fontFamily: 'Fredoka, "Baloo 2", "Trebuchet MS", sans-serif',
+        fontWeight: '700',
+        fontSize: Math.round(s * (0.38 + Math.min(cascade, 5) * 0.04)),
+        fill: 0xffffff,
+        stroke: { color: 0x8a63ff, width: Math.max(3, Math.round(s * 0.08)), join: 'round' },
+      },
+    });
+    t.anchor.set(0.5);
+    t.position.set(this.lastClearCenter.x, this.lastClearCenter.y);
+    t.scale.set(0.5);
+    this.textLayer.addChild(t);
+    gsap
+      .timeline({ onComplete: () => void (t.destroyed || t.destroy()) })
+      .to(t.scale, { x: 1, y: 1, duration: 0.25, ease: 'back.out(3)' })
+      .to(t, { y: t.y - s * 0.9, duration: 0.8, ease: 'power1.out' }, 0)
+      .to(t, { alpha: 0, duration: 0.3, ease: 'power1.in' }, 0.55);
   }
 
   get cell(): number {
@@ -92,6 +219,7 @@ export class BoardView {
   setBoard(board: Board): void {
     this.clearHint();
     this.fx.clear();
+    this.particles.clear();
     for (const n of this.nodes.values()) this.destroyNode(n);
     this.nodes.clear();
     this.rows = board.rows;
@@ -288,6 +416,8 @@ export class BoardView {
         return;
       case 'matched': {
         const cells = e.groups.flatMap((g) => g.cells);
+        const word = cascadeWord(e.cascade);
+        if (word) this.showWord(word);
         await Promise.all(
           cells.map((p) => {
             const n = this.nodeAt(p);
@@ -318,11 +448,13 @@ export class BoardView {
         n.node.scale.set(0);
         const { x, y } = this.cellCenter(e.pos);
         this.fx.ring(x, y, this.cellSize * 0.2, this.cellSize * 0.8, this.cellSize * 0.08, tint(e.piece));
+        this.particles.sparkleRing(x, y, this.cellSize * 0.5, tint(e.piece));
         await gsap.to(n.node.scale, { x: 1, y: 1, duration: 0.3, ease: 'back.out(3)' }).then();
         return;
       }
       case 'scored':
         this.onScore(e.total);
+        if (e.points > 0) this.scorePopup(e.points, e.cascade);
         return;
       case 'fell':
         await this.playFell(e);
@@ -337,6 +469,13 @@ export class BoardView {
   }
 
   private playCleared(e: EventOf<'cleared'>, merges: ReadonlyMap<string, Pos>): Promise<unknown> {
+    if (e.pieces.length > 0) {
+      const centers = e.pieces.map(({ pos }) => this.cellCenter(pos));
+      this.lastClearCenter = {
+        x: centers.reduce((sum, c) => sum + c.x, 0) / centers.length,
+        y: centers.reduce((sum, c) => sum + c.y, 0) / centers.length,
+      };
+    }
     return Promise.all(
       e.pieces.map(({ pos, piece }) => {
         const n = this.nodes.get(piece.id);
@@ -371,6 +510,10 @@ export class BoardView {
     const rowBeam = (row: number) => this.fx.beam(width / 2, (row + 0.5) * s, true, width, s * 0.6, color);
     const colBeam = (col: number) => this.fx.beam((col + 0.5) * s, height / 2, false, height, s * 0.6, color);
     const targets = () => e.cells.map((p) => this.cellCenter(p));
+    const shake = SHAKE[e.effect];
+    if (shake) this.shake(shake[0], shake[1]);
+    const word = comboWord(e.effect);
+    if (word) this.showWord(word);
     switch (e.effect) {
       case 'row':
         rowBeam(e.pos.row);
@@ -422,6 +565,7 @@ export class BoardView {
   private popNode(n: PieceNode): Promise<unknown> {
     n.popped = true;
     gsap.killTweensOf([n.node, n.node.scale]);
+    this.particles.pop(n.node.x, n.node.y, tint(n.piece), this.cellSize, n.piece.special === 'none' ? 1 : 1.5);
     return gsap
       .timeline()
       .to(n.node.scale, { x: 0, y: 0, duration: MOTION.clear, ease: MOTION.clearEase }, 0)
@@ -493,7 +637,12 @@ export class BoardView {
       if (!n) continue;
       const { x, y } = this.cellCenter(p);
       tweens.push(gsap.to(n.node, { x, y, duration, ease }).then());
-      gsap.to(n.node.scale, { x: 1, y: 1, duration: 0.1, overwrite: true });
+      // Jelly stretch along the direction of travel, settling with a little overshoot.
+      const horizontal = a.row === b.row;
+      gsap
+        .timeline({ overwrite: true })
+        .to(n.node.scale, { x: horizontal ? 1.14 : 0.9, y: horizontal ? 0.9 : 1.14, duration: duration / 2, ease: 'power2.out' })
+        .to(n.node.scale, { x: 1, y: 1, duration: duration * 1.2, ease: 'back.out(3)' });
     }
     return Promise.all(tweens);
   }
@@ -521,7 +670,7 @@ export class BoardView {
     const node = new Container();
     node.addChild(sprite);
     this.pieceLayer.addChild(node);
-    const n: PieceNode = { piece, node, sprite };
+    const n: PieceNode = { piece, node, sprite, baseScale: 1, phase: Math.random() * Math.PI * 2 };
     this.fitSprite(n);
     this.nodes.set(piece.id, n);
     return n;
@@ -529,7 +678,8 @@ export class BoardView {
 
   private fitSprite(n: PieceNode): void {
     const size = this.cellSize * PIECE_FILL;
-    n.sprite.scale.set(size / n.sprite.texture.width);
+    n.baseScale = size / n.sprite.texture.width;
+    n.sprite.scale.set(n.baseScale);
   }
 
   private placeNode(n: PieceNode, p: Pos): void {
