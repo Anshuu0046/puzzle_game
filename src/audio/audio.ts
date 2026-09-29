@@ -54,6 +54,11 @@ export class GameAudio {
     this.sfxEnabled = on;
   }
 
+  /** Sets the preference without starting playback (used at boot, before any gesture). */
+  setMusicEnabled(on: boolean): void {
+    this.musicEnabled = on;
+  }
+
   setMusic(on: boolean): void {
     this.musicEnabled = on;
     if (on) this.startMusic();

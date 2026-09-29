@@ -2,6 +2,7 @@ import type { Board } from './board';
 import type { BoardEvent } from './events';
 import { IdSource, generateBoard } from './generate';
 import { isInMatch } from './match';
+import { type GoalConfig, type GoalProgress, GoalTracker, starRating } from './goals';
 import { bestMove, hasMove } from './moves';
 import { Rng } from './rng';
 import { Resolver, isComboSwap } from './resolve';
@@ -16,7 +17,12 @@ export interface LevelConfig {
   /** Number of piece colors in play, 3..6. */
   readonly colors: number;
   readonly moves: number;
-  readonly targetScore: number;
+  /** Score for 1, 2 and 3 stars. */
+  readonly stars: readonly [number, number, number];
+  /** All must be complete to win. */
+  readonly goals: readonly GoalConfig[];
+  /** Optional jelly map, same size as `shape`: digits = layers. */
+  readonly jelly?: readonly string[];
 }
 
 export type GameStatus = 'playing' | 'won' | 'lost';
@@ -44,6 +50,8 @@ export class Game {
   private scoreValue = 0;
   private movesLeftValue: number;
   private statusValue: GameStatus = 'playing';
+  private readonly tracker: GoalTracker;
+  private finaleDone = false;
 
   private constructor(level: LevelConfig, board: Board, rng: Rng, ids: IdSource) {
     if (level.colors < 3 || level.colors > MAX_COLORS) throw new RangeError(`colors must be 3..${MAX_COLORS}`);
@@ -53,6 +61,8 @@ export class Game {
     this.ids = ids;
     this.palette = Array.from({ length: level.colors }, (_, i) => i);
     this.movesLeftValue = level.moves;
+    if (level.goals.length === 0) throw new RangeError('a level needs at least one goal');
+    this.tracker = new GoalTracker(level.goals, board.jellyTotal());
   }
 
   /** Starts a level with a freshly generated board. Same seed → same game. */
@@ -60,7 +70,9 @@ export class Game {
     const rng = new Rng(seed);
     const ids = new IdSource();
     const palette = Array.from({ length: level.colors }, (_, i) => i);
-    return new Game(level, generateBoard(level.shape, palette, rng, ids), rng, ids);
+    const board = generateBoard(level.shape, palette, rng, ids);
+    if (level.jelly) board.applyJelly(level.jelly);
+    return new Game(level, board, rng, ids);
   }
 
   /** Starts from a prepared board (tests, replays). Refills use the seeded RNG. */
@@ -86,8 +98,38 @@ export class Game {
     return this.statusValue;
   }
 
+  get goals(): GoalProgress[] {
+    return this.tracker.progress();
+  }
+
+  /** Stars earned so far (at least one once the level is won). */
+  get stars(): number {
+    return starRating(this.scoreValue, this.level.stars, this.statusValue === 'won');
+  }
+
+  /** True once the level is won and leftover moves are waiting to be cashed in. */
+  get canFinale(): boolean {
+    return this.statusValue === 'won' && !this.finaleDone && this.movesLeftValue > 0;
+  }
+
+  /** Cashes in leftover moves (see Resolver.finale). Only after a win, once. */
+  finale(): TurnResult {
+    if (!this.canFinale) return { accepted: false, events: [], points: 0, cascades: 0, shuffled: false };
+    this.finaleDone = true;
+    const resolver = new Resolver(this.boardState, this.palette, this.rng, this.ids, this.scoreValue, this.tracker);
+    const cascades = resolver.finale(this.movesLeftValue);
+    this.movesLeftValue = 0;
+    this.scoreValue += resolver.points;
+    return { accepted: true, events: resolver.events, points: resolver.points, cascades, shuffled: false };
+  }
+
+  /** A good move, favoring the goals still open (jelly, colors to collect). */
   hint(): Move | null {
-    return bestMove(this.boardState);
+    const open = this.tracker.progress().filter((g) => g.done < g.target);
+    return bestMove(this.boardState, {
+      jelly: open.some((g) => g.kind === 'jelly'),
+      colors: open.flatMap((g) => (g.kind === 'collect' && g.color !== undefined ? [g.color] : [])),
+    });
   }
 
   trySwap(a: Pos, b: Pos): TurnResult {
@@ -104,7 +146,7 @@ export class Game {
       return reject([{ type: 'swapRejected', a, b }]);
     }
 
-    const resolver = new Resolver(board, this.palette, this.rng, this.ids, this.scoreValue);
+    const resolver = new Resolver(board, this.palette, this.rng, this.ids, this.scoreValue, this.tracker);
     const cascade = resolver.resolveSwap(a, b);
     const events: BoardEvent[] = [{ type: 'swapped', a, b }, ...resolver.events];
     const points = resolver.points;
@@ -117,7 +159,7 @@ export class Game {
 
     this.scoreValue += points;
     this.movesLeftValue--;
-    if (this.scoreValue >= this.level.targetScore) this.statusValue = 'won';
+    if (this.tracker.complete()) this.statusValue = 'won';
     else if (this.movesLeftValue <= 0) this.statusValue = 'lost';
 
     return { accepted: true, events, points, cascades: cascade, shuffled };

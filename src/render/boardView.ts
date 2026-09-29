@@ -75,6 +75,9 @@ export class BoardView {
   private reduced = false;
   private readonly panel = new Graphics();
   private readonly tiles = new Graphics();
+  private readonly jellyLayer = new Graphics();
+  /** Jelly layers per cell as last reported by the engine. */
+  private jelly: number[] = [];
   private readonly selectionRing = new Graphics();
   private readonly pieceLayer = new Container();
   private readonly pieceMask = new Graphics();
@@ -90,10 +93,14 @@ export class BoardView {
 
   private queue: Promise<void> = Promise.resolve();
   private pending = 0;
+  /** Bumped by setBoard: animations queued for an older board are abandoned, never replayed. */
+  private generation = 0;
   private snapPending = false;
 
   private readonly fx = new FxLayer();
   private hintNodes: PieceNode[] = [];
+  /** Delay between chained activations in the current run (see playAll). */
+  private chainGap: number = MOTION.chainStep;
 
   onScore: (total: number) => void = () => {};
   /** Called as each event starts playing (sound, HUD, combo text). */
@@ -104,6 +111,7 @@ export class BoardView {
     this.content.addChild(
       this.panel,
       this.tiles,
+      this.jellyLayer,
       this.selectionRing,
       this.pieceLayer,
       this.pieceMask,
@@ -217,6 +225,10 @@ export class BoardView {
 
   /** Replaces the whole view state with a board snapshot (new level, or resync). */
   setBoard(board: Board): void {
+    this.generation++;
+    this.queue = Promise.resolve();
+    this.pending = 0;
+    this.snapPending = false;
     this.clearHint();
     this.fx.clear();
     this.particles.clear();
@@ -226,10 +238,12 @@ export class BoardView {
     this.cols = board.cols;
     this.playable = [];
     this.grid = [];
+    this.jelly = [];
     for (let r = 0; r < board.rows; r++) {
       for (let c = 0; c < board.cols; c++) {
         const p = { row: r, col: c };
         this.playable.push(board.isPlayable(p));
+        this.jelly.push(board.jelly(p));
         const piece = board.get(p);
         this.grid.push(piece?.id ?? null);
         if (piece) this.placeNode(this.createNode(piece), p);
@@ -363,20 +377,23 @@ export class BoardView {
 
   /** Queues events for playback. Resolves when they (and everything queued before) have played. */
   play(events: readonly BoardEvent[]): Promise<void> {
+    const gen = this.generation;
     this.pending++;
     this.queue = this.queue
-      .then(() => this.playAll(events))
+      .then(() => this.playAll(events, gen))
       .catch((err: unknown) => console.error('animation failed', err))
       .finally(() => {
+        if (gen !== this.generation) return;
         this.pending--;
         if (this.pending === 0 && this.snapPending) this.snapAll();
       });
     return this.queue;
   }
 
-  private async playAll(events: readonly BoardEvent[]): Promise<void> {
+  private async playAll(events: readonly BoardEvent[], gen: number): Promise<void> {
     this.clearHint();
     for (let i = 0; i < events.length; i++) {
+      if (gen !== this.generation) return;
       const e = events[i]!;
       // Falls and spawns of one cascade step animate together.
       if (e.type === 'fell' && events[i + 1]?.type === 'spawned') {
@@ -396,6 +413,12 @@ export class BoardView {
         this.onEvent(e);
         await this.playCleared(e, merges);
         continue;
+      }
+      if (e.type === 'specialActivated') {
+        // Long chains compress so a big combo or the finale never drags: ~1s of blasts at most.
+        let run = 1;
+        while (events[i + run]?.type === 'specialActivated') run++;
+        this.chainGap = Math.min(MOTION.chainStep, MOTION.chainBudget / run);
       }
       this.onEvent(e);
       await this.playEvent(e);
@@ -464,6 +487,32 @@ export class BoardView {
         return;
       case 'shuffled':
         await this.playShuffled(e);
+        return;
+      case 'jellyCleared':
+        for (const c of e.cells) {
+          this.jelly[c.pos.row * this.cols + c.pos.col] = c.layers;
+          const { x, y } = this.cellCenter(c.pos);
+          this.particles.pop(x, y, 0xff8fbd, this.cellSize, 0.6);
+        }
+        this.drawJelly();
+        return;
+      case 'finale':
+        this.showWord('Bloom Bonus!');
+        await wait(0.7);
+        return;
+      case 'bonusMove': {
+        const n = this.nodes.get(e.piece.id);
+        if (!n) return;
+        n.piece = e.piece;
+        n.sprite.texture = this.textures.get(e.piece);
+        this.fitSprite(n);
+        const { x, y } = this.cellCenter(e.pos);
+        this.particles.sparkleRing(x, y, this.cellSize * 0.4, tint(e.piece));
+        gsap.fromTo(n.node.scale, { x: 1.5, y: 1.5 }, { x: 1, y: 1, duration: 0.3, ease: 'back.out(3)' });
+        await wait(0.09);
+        return;
+      }
+      case 'goals':
         return;
     }
   }
@@ -551,14 +600,16 @@ export class BoardView {
     }
     // Pieces pop as the blast reaches them (converted pieces must survive to fire themselves).
     if (e.effect !== 'prismLines' && e.effect !== 'prismBursts') {
+      const gen = this.generation;
       gsap.delayedCall(0.06, () => {
+        if (gen !== this.generation) return;
         for (const p of e.cells) {
           const hit = this.nodeAt(p);
           if (hit && !hit.popped) this.popNode(hit);
         }
       });
     }
-    await wait(e.effect === 'prismLines' || e.effect === 'prismBursts' ? 0.3 : MOTION.chainStep);
+    await wait(e.effect === 'prismLines' || e.effect === 'prismBursts' ? 0.3 : this.chainGap);
   }
 
   /** Clear animation. The node stays registered until the engine's 'cleared' event removes it. */
@@ -738,8 +789,29 @@ export class BoardView {
           .fill({ color: (r + c) % 2 === 0 ? BOARD.tileA : BOARD.tileB, alpha: BOARD.tileAlpha });
       }
     }
+    this.drawJelly();
     // Pieces entering from above stay hidden until they reach the board.
     this.pieceMask.rect(-pad, 0, this.cols * s + pad * 2, this.rows * s + pad).fill(0xffffff);
+  }
+
+  /** Strawberry jelly under pieces: one layer is translucent, two layers are deeper and rimmed. */
+  private drawJelly(): void {
+    const s = this.cellSize;
+    const g = this.jellyLayer;
+    g.clear();
+    const inset = Math.max(1, Math.round(s * 0.05));
+    const r = Math.round(s * 0.22);
+    this.jelly.forEach((layers, i) => {
+      if (layers <= 0) return;
+      const x = (i % this.cols) * s + inset;
+      const y = Math.floor(i / this.cols) * s + inset;
+      const w = s - inset * 2;
+      const deep = layers >= 2;
+      g.roundRect(x, y, w, w, r)
+        .fill({ color: deep ? 0xe8337a : 0xff5c9a, alpha: deep ? 0.78 : 0.5 })
+        .stroke({ color: deep ? 0xb81d5c : 0xe8468a, width: Math.max(2, s * (deep ? 0.07 : 0.045)), alpha: 0.85 });
+      g.roundRect(x + w * 0.1, y + w * 0.08, w * 0.8, w * 0.16, w * 0.08).fill({ color: 0xffffff, alpha: 0.45 });
+    });
   }
 
   private drawSelection(): void {

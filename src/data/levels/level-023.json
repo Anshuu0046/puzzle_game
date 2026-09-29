@@ -1,6 +1,6 @@
 {
-  "id": 1,
-  "name": "Blossom Lane",
+  "id": 23,
+  "name": "Minty Grove",
   "shape": [
     "........",
     "........",
@@ -11,17 +11,17 @@
     "........",
     "........"
   ],
-  "colors": 5,
-  "moves": 16,
+  "colors": 6,
+  "moves": 25,
   "stars": [
-    1500,
-    6200,
-    9300
+    7000,
+    9000,
+    13600
   ],
   "goals": [
     {
       "kind": "score",
-      "target": 1500
+      "target": 7000
     }
   ]
 }

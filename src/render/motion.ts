@@ -16,6 +16,11 @@ export const MOTION = {
   merge: 0.16,
   /** Gap between chained special activations. */
   chainStep: 0.12,
+  /** Total time a run of chained activations may take before gaps shrink. */
+  chainBudget: 1.1,
+  /** Playback speed of the end-of-level finale; tapping speeds it up further. */
+  finaleSpeed: 2.2,
+  finaleSkipSpeed: 5,
   shuffle: 0.45,
   shuffleEase: 'power3.inOut',
 } as const;

@@ -8,4 +8,5 @@ export * from './shuffle';
 export * from './events';
 export * from './scoring';
 export * from './resolve';
+export * from './goals';
 export * from './game';

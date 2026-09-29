@@ -1,6 +1,6 @@
 {
-  "id": 1,
-  "name": "Blossom Lane",
+  "id": 18,
+  "name": "Caramel Meadow",
   "shape": [
     "........",
     "........",
@@ -11,17 +11,22 @@
     "........",
     "........"
   ],
-  "colors": 5,
-  "moves": 16,
+  "colors": 6,
+  "moves": 26,
   "stars": [
-    1500,
-    6200,
-    9300
+    6000,
+    7500,
+    11200
   ],
   "goals": [
     {
+      "kind": "collect",
+      "color": 3,
+      "count": 30
+    },
+    {
       "kind": "score",
-      "target": 1500
+      "target": 6000
     }
   ]
 }

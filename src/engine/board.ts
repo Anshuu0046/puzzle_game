@@ -11,6 +11,8 @@ export class Board {
   readonly cols: number;
   private readonly playable: readonly boolean[];
   private readonly cells: (Piece | null)[];
+  /** Jelly layers under each cell (0 = none). Clearing a piece on jelly removes one layer. */
+  private readonly jellyLayers: number[];
   /** Playable positions in row-major order from the top-left. */
   readonly positions: readonly Pos[];
   private readonly columnCells: readonly (readonly Pos[])[];
@@ -24,6 +26,7 @@ export class Board {
     this.cols = cols;
     this.playable = playable ? [...playable] : new Array<boolean>(rows * cols).fill(true);
     this.cells = new Array<Piece | null>(rows * cols).fill(null);
+    this.jellyLayers = new Array<number>(rows * cols).fill(0);
     const all: Pos[] = [];
     for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) if (this.playable[r * cols + c]) all.push(pos(r, c));
     this.positions = all;
@@ -61,6 +64,33 @@ export class Board {
     this.cells[p.row * this.cols + p.col] = piece;
   }
 
+  jelly(p: Pos): number {
+    return this.inBounds(p) ? (this.jellyLayers[p.row * this.cols + p.col] ?? 0) : 0;
+  }
+
+  setJelly(p: Pos, layers: number): void {
+    if (!this.isPlayable(p)) throw new RangeError(`cannot put jelly on non-playable cell ${p.row},${p.col}`);
+    this.jellyLayers[p.row * this.cols + p.col] = Math.max(0, Math.floor(layers));
+  }
+
+  /** Total jelly layers left on the board. */
+  jellyTotal(): number {
+    return this.jellyLayers.reduce((sum, n) => sum + n, 0);
+  }
+
+  /**
+   * Applies a jelly map: one string per row, digits = layers ('1', '2'), anything else = none.
+   */
+  applyJelly(rows: readonly string[]): void {
+    if (rows.length !== this.rows || rows.some((r) => r.length !== this.cols)) throw new RangeError('jelly map must match the board size');
+    rows.forEach((line, r) =>
+      [...line].forEach((ch, c) => {
+        const n = ch >= '1' && ch <= '9' ? Number(ch) : 0;
+        if (n > 0) this.setJelly(pos(r, c), n);
+      }),
+    );
+  }
+
   swap(a: Pos, b: Pos): void {
     const tmp = this.get(a);
     this.set(a, this.get(b));
@@ -87,7 +117,10 @@ export class Board {
 
   clone(): Board {
     const b = new Board(this.rows, this.cols, this.playable);
-    for (let i = 0; i < this.cells.length; i++) b.cells[i] = this.cells[i] ?? null;
+    for (let i = 0; i < this.cells.length; i++) {
+      b.cells[i] = this.cells[i] ?? null;
+      b.jellyLayers[i] = this.jellyLayers[i] ?? 0;
+    }
     return b;
   }
 

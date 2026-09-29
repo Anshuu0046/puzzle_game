@@ -1,3 +1,4 @@
+import type { GoalProgress } from './goals';
 import type { MatchGroup } from './match';
 import type { ShuffleMove } from './shuffle';
 import type { Piece, Pos } from './types';
@@ -62,6 +63,14 @@ export type BoardEvent =
   /** A piece turned into a special in place (Prism combos). Same id, new special. */
   | { readonly type: 'transformed'; readonly pos: Pos; readonly piece: Piece }
   | { readonly type: 'cleared'; readonly cascade: number; readonly pieces: readonly PlacedPiece[] }
+  /** Jelly layers removed by the clear just before; `layers` is what is left on each cell. */
+  | { readonly type: 'jellyCleared'; readonly cells: readonly { readonly pos: Pos; readonly layers: number }[] }
+  /** Goal progress after a clear step. */
+  | { readonly type: 'goals'; readonly goals: readonly GoalProgress[] }
+  /** The level is won: leftover moves become Line Blasters (see bonusMove), then everything fires. */
+  | { readonly type: 'finale'; readonly moves: number }
+  /** One leftover move converted during the finale. */
+  | { readonly type: 'bonusMove'; readonly pos: Pos; readonly piece: Piece; readonly movesLeft: number }
   /** A new special appeared at `pos`, made from the matched cells `from`. */
   | { readonly type: 'specialCreated'; readonly cascade: number; readonly pos: Pos; readonly piece: Piece; readonly from: readonly Pos[] }
   | { readonly type: 'fell'; readonly falls: readonly Fall[] }

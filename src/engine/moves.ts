@@ -1,7 +1,13 @@
 import type { Board } from './board';
 import { findGroups, isInMatch } from './match';
 import { isComboSwap } from './resolve';
-import { type Move, type Pos, isAdjacent, pos, samePos } from './types';
+import { type Color, type Move, type Pos, isAdjacent, pos, samePos } from './types';
+
+/** What the player still needs, so hints favor useful moves. */
+export interface HintFocus {
+  readonly jelly: boolean;
+  readonly colors: readonly Color[];
+}
 
 /**
  * True if swapping a and b is a legal move: adjacent, both hold pieces, and either a match results
@@ -41,7 +47,7 @@ export function hasMove(board: Board): boolean {
 const SPECIAL_VALUE = { none: 0, lineBlaster: 40, burstBomb: 60, prismOrb: 100 } as const;
 
 /** Rough immediate value of a legal move, used to pick hints. */
-export function moveValue(board: Board, move: Move): number {
+export function moveValue(board: Board, move: Move, focus?: HintFocus): number {
   const pa = board.get(move.a)!;
   const pb = board.get(move.b)!;
   if (isComboSwap(pa, pb)) {
@@ -52,22 +58,25 @@ export function moveValue(board: Board, move: Move): number {
   board.swap(move.a, move.b);
   const value = findGroups(board)
     .filter((g) => g.cells.some((p) => samePos(p, move.a) || samePos(p, move.b)))
-    .reduce(
-      (sum, g) =>
-        sum + g.cells.length * 10 + SPECIAL_VALUE[g.special] + g.cells.filter((p) => board.get(p)!.special !== 'none').length * 30,
-      0,
-    );
+    .reduce((sum, g) => {
+      let value = g.cells.length * 10 + SPECIAL_VALUE[g.special] + g.cells.filter((p) => board.get(p)!.special !== 'none').length * 30;
+      if (focus?.jelly) value += g.cells.reduce((n, p) => n + board.jelly(p) * 25, 0);
+      if (focus?.colors.includes(g.color)) value += g.cells.length * 15;
+      // Lower matches shake up more of the board.
+      value += g.cells.reduce((n, p) => n + p.row, 0);
+      return sum + value;
+    }, 0);
   board.swap(move.a, move.b);
   return value;
 }
 
 /** The move to suggest as a hint: highest immediate value, ties broken by board order. */
-export function bestMove(board: Board): Move | null {
+export function bestMove(board: Board, focus?: HintFocus): Move | null {
   const work = board.clone();
   let best: Move | null = null;
   let bestValue = -1;
   for (const move of findMoves(work)) {
-    const value = moveValue(work, move);
+    const value = moveValue(work, move, focus);
     if (value > bestValue) {
       bestValue = value;
       best = move;

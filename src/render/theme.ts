@@ -20,7 +20,7 @@ export const BOARD = {
   panel: 0xfff3f8,
   panelLip: 0xf4c9dc,
   tileA: 0xffffff,
-  tileB: 0xfde4f0,
+  tileB: 0xf3ebfb,
   tileAlpha: 0.85,
   selection: 0xffffff,
 } as const;

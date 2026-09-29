@@ -1,6 +1,7 @@
 import type { Board } from './board';
 import type { BoardEvent, Effect, Fall, PlacedPiece, Spawn } from './events';
 import type { IdSource } from './generate';
+import type { GoalTracker } from './goals';
 import { type MatchGroup, findGroups } from './match';
 import type { Rng } from './rng';
 import { POINTS_PER_BLASTED, effectBonus, groupPoints } from './scoring';
@@ -8,6 +9,10 @@ import { type Color, type Piece, type Pos, type Special, isLine, plain, pos, pos
 
 /** Safety net: real cascades stop long before this. */
 const MAX_CASCADES = 100;
+/** Finale rounds stop here even if specials keep appearing. */
+const MAX_FINALE_ROUNDS = 20;
+/** The finale's own blasts don't multiply past this (its cascades still do). */
+const FINALE_MAX_MULTIPLIER = 3;
 
 /** A swap that goes off without needing a match: any Prism Orb swap, or two specials together. */
 export function isComboSwap(a: Piece, b: Piece): boolean {
@@ -56,6 +61,7 @@ export class Resolver {
     private readonly rng: Rng,
     private readonly ids: IdSource,
     private readonly scoreBefore: number,
+    private readonly tracker: GoalTracker | null = null,
   ) {}
 
   /** `a` → `b` is the player's drag; the swap is already applied to the board. Returns the cascade count. */
@@ -93,7 +99,7 @@ export class Resolver {
     const blast = new Blast(this.board, this.events, cascade);
     for (const g of groups) for (const p of g.cells) blast.add(p);
     blast.run();
-    const cleared = blast.commit();
+    const cleared = this.commit(blast);
 
     for (const { group, special, at } of spawns) {
       const piece: Piece = { id: this.ids.next(), color: special === 'prism' ? null : group.color, special };
@@ -156,13 +162,67 @@ export class Resolver {
       }
     }
     blast.run();
-    const cleared = blast.commit();
+    const cleared = this.commit(blast);
     this.addPoints(cascade, (cleared.length * POINTS_PER_BLASTED + blast.bonus) * cascade);
+  }
+
+  /**
+   * End-of-level bonus: each leftover move turns a random plain piece into a Line Blaster, then every
+   * special on the board fires, round after round, until none are left. Returns the cascade count.
+   */
+  finale(moves: number): number {
+    const board = this.board;
+    this.events.push({ type: 'finale', moves });
+    let left = moves;
+    for (let i = 0; i < moves; i++) {
+      const plainCells = board.positions.filter((p) => board.get(p)?.special === 'none');
+      if (plainCells.length === 0) break;
+      const p = this.rng.pick(plainCells);
+      const piece: Piece = { ...board.get(p)!, special: this.rng.int(2) === 0 ? 'lineH' : 'lineV' };
+      board.set(p, piece);
+      this.events.push({ type: 'bonusMove', pos: p, piece, movesLeft: --left });
+    }
+    let cascade = 0;
+    for (let round = 0; round < MAX_FINALE_ROUNDS; round++) {
+      const specials = board.positions.filter((p) => (board.get(p)?.special ?? 'none') !== 'none');
+      if (specials.length === 0) break;
+      cascade++;
+      const blast = new Blast(board, this.events, cascade);
+      for (const p of specials) blast.add(p);
+      blast.run();
+      const cleared = this.commit(blast);
+      this.addPoints(cascade, (cleared.length * POINTS_PER_BLASTED + blast.bonus) * Math.min(cascade, FINALE_MAX_MULTIPLIER));
+      this.settle();
+      cascade = this.cascadeFrom(cascade);
+    }
+    return cascade;
+  }
+
+  /** Clears the blast's cells, peels jelly under them and records goal progress. */
+  private commit(blast: Blast): PlacedPiece[] {
+    const cleared = blast.commit();
+    const jelly: { pos: Pos; layers: number }[] = [];
+    for (const { pos: p } of cleared) {
+      const layers = this.board.jelly(p);
+      if (layers > 0) {
+        this.board.setJelly(p, layers - 1);
+        jelly.push({ pos: p, layers: layers - 1 });
+      }
+    }
+    if (jelly.length > 0) this.events.push({ type: 'jellyCleared', cells: jelly });
+    this.tracker?.recordCleared(cleared);
+    this.tracker?.recordJelly(jelly.length);
+    return cleared;
   }
 
   private addPoints(cascade: number, points: number): void {
     this.points += points;
-    this.events.push({ type: 'scored', cascade, points, total: this.scoreBefore + this.points });
+    const total = this.scoreBefore + this.points;
+    this.events.push({ type: 'scored', cascade, points, total });
+    if (this.tracker) {
+      this.tracker.setScore(total);
+      this.events.push({ type: 'goals', goals: this.tracker.progress() });
+    }
   }
 
   /** Gravity then refill: pieces drop past holes to the lowest free cells; new ones enter from the top. */

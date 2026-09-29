@@ -1,5 +1,5 @@
-// Starts the Vite dev server, opens the game at mobile and desktop sizes, plays one real swap through
-// the input layer (tap-tap on mobile, mouse drag on desktop) and saves screenshots to screenshots/.
+// Starts the Vite dev server and walks the whole game at mobile and desktop sizes, through the real
+// input layer, saving screenshots to screenshots/ and failing on any check or page error.
 //
 //   npm run shots            # seed 12345
 //   SEED=7 npm run shots
@@ -14,16 +14,6 @@ const VIEWPORTS = [
   { name: 'desktop', viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, isMobile: false, hasTouch: false },
 ];
 
-async function launch() {
-  const args = ['--enable-unsafe-swiftshader', '--use-angle=swiftshader', '--ignore-gpu-blocklist'];
-  try {
-    return await chromium.launch({ args });
-  } catch {
-    // Fall back to a preinstalled Chromium when Playwright's own build isn't downloaded.
-    return chromium.launch({ args, executablePath: process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium' });
-  }
-}
-
 // Every special on one board, no matches. (3,4) Line Blaster + (3,3) Burst Bomb is a combo.
 const SHOWCASE = `
   R O Y G B P R O
@@ -35,43 +25,26 @@ const SHOWCASE = `
   R O* G B P R O Y
   O Y B P R O Y G`;
 
-async function drag(page, from, to) {
-  await page.mouse.move(from.x, from.y);
-  await page.mouse.down();
-  await page.mouse.move(to.x, to.y, { steps: 6 });
-  await page.mouse.up();
-}
+// Plain board with one obvious move: (7,2) O down... swap (6,2)<->(7,2) makes R R R on row 7.
+const PLAIN = `
+  G B P O Y G B P
+  B P O Y G B P O
+  P O Y G B P O Y
+  O Y G B P O Y G
+  Y G B P O Y G B
+  G B P O Y G B P
+  B P R O Y G B P
+  R R O G B P O Y`;
 
-/** Staged board: all special pieces, a Line + Burst combo mid-blast, and the idle hint. */
-async function specialsScenario(page, name) {
-  await page.evaluate((text) => window.__sugarBloom.loadBoard(text), SHOWCASE);
-  await page.waitForTimeout(300);
-  await page.screenshot({ path: new URL(`${name}-5-specials.png`, OUT).pathname });
-
-  const [from, to] = await page.evaluate(() => [
-    window.__sugarBloom.cellToClient({ row: 3, col: 4 }),
-    window.__sugarBloom.cellToClient({ row: 3, col: 3 }),
-  ]);
-  const before = await page.evaluate(() => window.__sugarBloom.game.score);
-  if (await page.evaluate(() => navigator.maxTouchPoints > 0)) {
-    await page.touchscreen.tap(from.x, from.y);
-    await page.touchscreen.tap(to.x, to.y);
-  } else {
-    await drag(page, from, to);
+async function launch() {
+  const args = ['--enable-unsafe-swiftshader', '--use-angle=swiftshader', '--ignore-gpu-blocklist'];
+  try {
+    return await chromium.launch({ args });
+  } catch {
+    // Fall back to a preinstalled Chromium when Playwright's own build isn't downloaded.
+    return chromium.launch({ args, executablePath: process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium' });
   }
-  await page.waitForTimeout(230);
-  await page.screenshot({ path: new URL(`${name}-6-combo.png`, OUT).pathname });
-  await waitIdle(page);
-  const after = await page.evaluate(() => window.__sugarBloom.game.score);
-
-  await page.evaluate((text) => window.__sugarBloom.loadBoard(text), SHOWCASE);
-  await page.evaluate(() => window.__sugarBloom.showHint());
-  await page.waitForTimeout(330);
-  await page.screenshot({ path: new URL(`${name}-7-hint.png`, OUT).pathname });
-  return after > before;
 }
-
-const waitIdle = (page) => page.waitForFunction(() => window.__sugarBloom?.isIdle() === true, null, { timeout: 15000 });
 
 async function run() {
   await mkdir(OUT, { recursive: true });
@@ -89,61 +62,137 @@ async function run() {
       const errors = [];
       page.on('pageerror', (e) => errors.push(e.message));
       page.on('console', (m) => m.type() === 'error' && !m.text().startsWith('Failed to load resource') && errors.push(m.text()));
-      // Network failures are reported separately: external fonts can flake in sandboxes and have fallbacks.
       page.on('requestfailed', (r) => console.log(`${vp.name}: request failed ${r.url()} (${r.failure()?.errorText})`));
+
+      let step = 0;
+      const shot = async (label) => {
+        step++;
+        await page.screenshot({ path: new URL(`${vp.name}-${String(step).padStart(2, '0')}-${label}.png`, OUT).pathname });
+      };
+      const check = (label, ok, detail = '') => {
+        console.log(`${vp.name}: ${label} ${ok ? 'OK' : 'FAILED'}${detail ? ` (${detail})` : ''}`);
+        failed ||= !ok;
+      };
+      const waitIdle = () => page.waitForFunction(() => window.__sugarBloom?.isIdle() === true, null, { timeout: 20000 });
+      const swap = async (a, b) => {
+        const [pa, pb] = await page.evaluate(([x, y]) => [window.__sugarBloom.cellToClient(x), window.__sugarBloom.cellToClient(y)], [a, b]);
+        if (vp.hasTouch) {
+          // Tap-tap on touch screens.
+          await page.touchscreen.tap(pa.x, pa.y);
+          await page.touchscreen.tap(pb.x, pb.y);
+          return;
+        }
+        // Drag with the mouse on desktop.
+        await page.mouse.move(pa.x, pa.y);
+        await page.mouse.down();
+        await page.mouse.move(pb.x, pb.y, { steps: 6 });
+        await page.mouse.up();
+      };
+      const button = (name) => page.getByRole('button', { name, exact: true });
+      const modal = (label) => page.locator(`.modal--open[aria-label="${label}"]`);
 
       await page.goto(url, { waitUntil: 'networkidle' });
       await page.waitForFunction(() => window.__sugarBloom !== undefined, null, { timeout: 15000 });
+      await page.evaluate(() => localStorage.clear());
+      await page.reload({ waitUntil: 'networkidle' });
+      await page.waitForFunction(() => window.__sugarBloom !== undefined, null, { timeout: 15000 });
       await page.evaluate(() => document.fonts.ready);
+      await page.waitForTimeout(500);
+      await shot('title');
+
+      await button('Play').click();
       await page.waitForTimeout(400);
-      await waitIdle(page);
-      await page.screenshot({ path: new URL(`${vp.name}-1-start.png`, OUT).pathname });
+      await shot('map');
+      check('map shows 30 levels, 1 unlocked', (await page.locator('.map-node').count()) === 30 && (await page.locator('.map-node:not([disabled])').count()) === 1);
+
+      await button('Level 1').click();
+      await modal('Level 1').waitFor();
+      await page.waitForTimeout(450);
+      await shot('intro');
+
+      await button('Play').click();
+      await page.waitForTimeout(500);
+      await waitIdle();
+      await shot('level');
+
+      const audio = await page.evaluate(() => window.__sugarBloom.audioLoaded());
+      check('audio', audio.total > 0 && audio.loaded === audio.total, `${audio.loaded}/${audio.total} effects decoded`);
 
       const before = await page.evaluate(() => {
         const g = window.__sugarBloom.game;
-        const hint = g.hint();
-        return {
-          score: g.score,
-          moves: g.movesLeft,
-          a: window.__sugarBloom.cellToClient(hint.a),
-          b: window.__sugarBloom.cellToClient(hint.b),
-        };
+        return { score: g.score, moves: g.movesLeft, hint: g.hint() };
       });
-
-      if (vp.hasTouch) {
-        await page.touchscreen.tap(before.a.x, before.a.y);
-        await page.waitForTimeout(250);
-        await page.screenshot({ path: new URL(`${vp.name}-2-selected.png`, OUT).pathname });
-        await page.touchscreen.tap(before.b.x, before.b.y);
-      } else {
-        await drag(page, before.a, before.b);
-      }
+      await swap(before.hint.a, before.hint.b);
       await page.waitForTimeout(260);
-      await page.screenshot({ path: new URL(`${vp.name}-3-mid.png`, OUT).pathname });
-      await waitIdle(page);
-      await page.waitForTimeout(600);
-      await page.screenshot({ path: new URL(`${vp.name}-4-after.png`, OUT).pathname });
-
+      await shot('swap-mid');
+      await waitIdle();
+      await page.waitForTimeout(700);
+      await shot('swap-after');
       const after = await page.evaluate(() => ({
         score: window.__sugarBloom.game.score,
         moves: window.__sugarBloom.game.movesLeft,
-        hudScore: document.querySelector('[data-score]')?.textContent,
-        hudMoves: document.querySelector('[data-moves]')?.textContent,
+        hudMoves: document.querySelector('.hud__moves .hud__value')?.textContent,
+        hudScore: document.querySelector('.hud__score .hud__value')?.textContent,
       }));
-      const swapped = after.moves === before.moves - 1 && after.score > before.score;
-      const hudOk = after.hudMoves === String(after.moves) && after.hudScore === after.score.toLocaleString('en-US');
-      console.log(
-        `${vp.name}: swap ${swapped ? 'OK' : 'FAILED'} (moves ${before.moves}→${after.moves}, score ${before.score}→${after.score}), ` +
-          `HUD ${hudOk ? 'OK' : 'MISMATCH'} (${after.hudMoves} / ${after.hudScore})`,
-      );
+      check('swap through input', after.moves === before.moves - 1 && after.score > before.score, `moves ${before.moves}→${after.moves}, score ${before.score}→${after.score}`);
+      check('HUD in sync', after.hudMoves === String(after.moves) && after.hudScore === after.score.toLocaleString('en-US'), `${after.hudMoves} / ${after.hudScore}`);
+
+      await page.getByRole('button', { name: 'Pause' }).click();
+      await modal('Paused').waitFor();
+      await page.waitForTimeout(450);
+      await shot('pause');
+      await button('Resume').click();
+      await page.waitForTimeout(300);
+
+      // Hint on a board with every special.
+      await page.evaluate((text) => window.__sugarBloom.loadBoard(text, 1), SHOWCASE);
+      await page.evaluate(() => window.__sugarBloom.showHint());
+      await page.waitForTimeout(350);
+      await shot('specials-hint');
+
+      // Line + Burst combo: mid-blast, the finale, then the result card.
+      await page.evaluate((text) => window.__sugarBloom.loadBoard(text, 1), SHOWCASE);
+      await swap({ row: 3, col: 4 }, { row: 3, col: 3 });
+      await page.waitForTimeout(240);
+      await shot('combo');
+      await page.waitForFunction(() => window.__sugarBloom.game?.status === 'won', null, { timeout: 20000 });
+      await page.waitForFunction(() => window.__sugarBloom.game?.canFinale === false, null, { timeout: 20000 });
+      await page.waitForTimeout(700);
+      await shot('finale');
+      // Tap to fast-forward the finale.
+      const t0 = Date.now();
+      if (vp.hasTouch) await page.touchscreen.tap(20, 800);
+      else await page.mouse.click(20, 800);
+      await modal('Level complete').waitFor({ timeout: 60000 });
+      console.log(`${vp.name}: finale finished ${((Date.now() - t0) / 1000).toFixed(1)}s after skip tap`);
+      await page.waitForTimeout(1800);
+      await shot('win');
+      const stars = await page.locator('.modal--open .stars__full').count();
+      check('win card with stars', stars >= 1, `${stars} stars`);
+
+      await button('Next level').click();
+      await modal('Level 2').waitFor();
+      await button('Back to map').click();
+      await page.waitForTimeout(500);
+      await shot('map-progress');
+      check('level 2 unlocked after win', (await page.locator('.map-node:not([disabled])').count()) === 2);
+
+      // A jelly level.
+      await page.evaluate(() => window.__sugarBloom.app.openLevel(4, true));
+      await page.waitForTimeout(600);
+      await waitIdle();
+      await shot('jelly-level');
+
+      // A loss: one move left and the goal far away.
+      await page.evaluate((text) => window.__sugarBloom.loadBoard(text, 2, 1), PLAIN);
+      await swap({ row: 6, col: 2 }, { row: 7, col: 2 });
+      await modal('Out of moves').waitFor({ timeout: 20000 });
+      await page.waitForTimeout(600);
+      await shot('lose');
+      check('lose card', true);
+
       if (errors.length) console.log(`${vp.name}: page errors:\n  ${errors.join('\n  ')}`);
-      const audio = await page.evaluate(() => window.__sugarBloom.audioLoaded());
-      const audioOk = audio.total > 0 && audio.loaded === audio.total;
-      console.log(`${vp.name}: audio ${audioOk ? 'OK' : 'FAILED'} (${audio.loaded}/${audio.total} effects decoded)`);
-      failed ||= !audioOk;
-      const comboOk = await specialsScenario(page, vp.name);
-      console.log(`${vp.name}: special combo ${comboOk ? 'OK' : 'FAILED'}`);
-      failed ||= !swapped || !hudOk || !comboOk || errors.length > 0;
+      failed ||= errors.length > 0;
       await context.close();
     }
   } finally {

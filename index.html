@@ -17,8 +17,13 @@
     />
   </head>
   <body>
-    <div id="stage"></div>
-    <header id="hud" class="hud"></header>
+    <div id="stage" hidden></div>
+    <header id="hud" class="hud" hidden></header>
+    <main id="screens"></main>
+    <div id="boot-error" class="boot-error" role="alert" hidden>
+      <p>Sugar Bloom couldn't start on this device. Please try a recent version of Chrome, Safari, Firefox or Edge.</p>
+    </div>
+    <noscript><p class="boot-error">Sugar Bloom needs JavaScript to play.</p></noscript>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

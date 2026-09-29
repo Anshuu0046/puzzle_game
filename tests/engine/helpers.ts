@@ -2,7 +2,14 @@ import { Board, type BoardEvent, type LevelConfig, Game, pos } from '../../src/e
 
 export const P = pos;
 
-export const LEVEL: Omit<LevelConfig, 'shape'> = { id: 0, name: 'test', colors: 6, moves: 99, targetScore: 1_000_000 };
+export const LEVEL: Omit<LevelConfig, 'shape'> = {
+  id: 0,
+  name: 'test',
+  colors: 6,
+  moves: 99,
+  stars: [1_000_000, 2_000_000, 3_000_000],
+  goals: [{ kind: 'score', target: 1_000_000 }],
+};
 
 export const EIGHT_BY_EIGHT = Array.from({ length: 8 }, () => '........');
 
@@ -46,6 +53,16 @@ export function replay(before: Board, events: readonly BoardEvent[]): Board {
         if (b.get(e.pos)?.id !== e.piece.id) throw new Error('transformed piece is not at its position');
         b.set(e.pos, e.piece);
         break;
+      case 'bonusMove':
+        if (b.get(e.pos)?.id !== e.piece.id) throw new Error('bonus piece is not at its position');
+        b.set(e.pos, e.piece);
+        break;
+      case 'jellyCleared':
+        for (const c of e.cells) {
+          if (b.jelly(c.pos) !== c.layers + 1) throw new Error(`jelly at ${c.pos.row},${c.pos.col} was not ${c.layers + 1}`);
+          b.setJelly(c.pos, c.layers);
+        }
+        break;
       case 'specialCreated':
         if (b.get(e.pos) !== null) throw new Error('special created on an occupied cell');
         b.set(e.pos, e.piece);
@@ -66,5 +83,5 @@ export function replay(before: Board, events: readonly BoardEvent[]): Board {
 }
 
 export function signature(b: Board): string {
-  return b.positions.map((p) => `${b.get(p)?.id ?? '-'}:${b.get(p)?.color ?? '-'}:${b.get(p)?.special ?? '-'}`).join(' ');
+  return b.positions.map((p) => `${b.get(p)?.id ?? '-'}:${b.get(p)?.color ?? '-'}:${b.get(p)?.special ?? '-'}:${b.jelly(p)}`).join(' ');
 }

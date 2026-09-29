@@ -1,5 +1,5 @@
 {
-  "id": 1,
+  "id": 8,
   "name": "Blossom Lane",
   "shape": [
     "........",
@@ -11,17 +11,18 @@
     "........",
     "........"
   ],
-  "colors": 5,
-  "moves": 16,
+  "colors": 6,
+  "moves": 25,
   "stars": [
-    1500,
-    6200,
-    9300
+    2200,
+    6800,
+    10200
   ],
   "goals": [
     {
-      "kind": "score",
-      "target": 1500
+      "kind": "collect",
+      "color": 2,
+      "count": 25
     }
   ]
 }

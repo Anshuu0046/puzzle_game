@@ -44,11 +44,11 @@ describe('Game.trySwap', () => {
     expect(game.movesLeft).toBe(LEVEL.moves);
   });
 
-  it('emits swapped → matched → cleared → scored → fell → spawned for a simple match', () => {
+  it('emits swapped → matched → cleared → scored → goals → fell → spawned for a simple match', () => {
     const game = gameFrom(HOLE);
     const result = game.trySwap(P(2, 2), P(3, 2));
     expect(result.accepted).toBe(true);
-    expect(result.events.slice(0, 6).map((e) => e.type)).toEqual(['swapped', 'matched', 'cleared', 'scored', 'fell', 'spawned']);
+    expect(result.events.slice(0, 7).map((e) => e.type)).toEqual(['swapped', 'matched', 'cleared', 'scored', 'goals', 'fell', 'spawned']);
     const [cleared] = eventsOf(result.events, 'cleared');
     expect(cleared!.pieces.map((c) => c.pos)).toEqual([P(3, 0), P(3, 1), P(3, 2)]);
     expect(cleared!.pieces.every((c) => c.piece.color === 0)).toBe(true);
@@ -147,7 +147,7 @@ describe('Game.trySwap', () => {
 
 describe('Game lifecycle', () => {
   it('is won once the target score is reached', () => {
-    const game = gameFrom(HOLE, 1, { targetScore: 50 });
+    const game = gameFrom(HOLE, 1, { goals: [{ kind: 'score', target: 50 }] });
     game.trySwap(P(2, 2), P(3, 2));
     expect(game.status).toBe('won');
     expect(game.trySwap(P(0, 0), P(0, 1)).events).toEqual([]);
