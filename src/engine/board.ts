@@ -1,4 +1,6 @@
-import { COLOR_CODES, type Piece, type Pos, pos } from './types';
+import { COLOR_CODES, type Piece, type Pos, type Special, pos } from './types';
+
+const SPECIAL_SUFFIX: Record<Exclude<Special, 'none' | 'prism'>, string> = { lineH: '-', lineV: '|', burst: '*' };
 
 /**
  * Mutable grid of pieces. Cells outside the level shape are holes: they never hold a piece, they
@@ -97,7 +99,7 @@ export class Board {
       for (let c = 0; c < this.cols; c++) {
         const p = pos(r, c);
         const piece = this.get(p);
-        row.push(!this.isPlayable(p) ? '#' : piece ? (COLOR_CODES[piece.color] ?? '?') : '.');
+        row.push(!this.isPlayable(p) ? '#' : piece ? pieceToken(piece) : '.');
       }
       lines.push(row.join(' '));
     }
@@ -107,6 +109,7 @@ export class Board {
   /**
    * Parses a board from whitespace-separated tokens, one line per row:
    * `R O Y G B P` = pieces of colors 0..5, `.` = empty playable cell, `#` = hole.
+   * Specials: suffix `-` Line Blaster (row), `|` Line Blaster (column), `*` Burst Bomb; `@` Prism Orb.
    * Pieces get ids firstId, firstId+1, ... in row-major order.
    */
   static parse(text: string, firstId = 1): Board {
@@ -127,11 +130,24 @@ export class Board {
     grid.forEach((line, r) =>
       line.forEach((token, c) => {
         if (token === '#' || token === '.') return;
-        const color = (COLOR_CODES as readonly string[]).indexOf(token);
-        if (color < 0) throw new RangeError(`unknown token '${token}'`);
-        board.set(pos(r, c), { id: id++, color });
+        board.set(pos(r, c), parseToken(token, id++));
       }),
     );
     return board;
   }
+}
+
+function pieceToken(piece: Piece): string {
+  if (piece.special === 'prism') return '@';
+  const code = COLOR_CODES[piece.color ?? -1] ?? '?';
+  return piece.special === 'none' ? code : code + SPECIAL_SUFFIX[piece.special];
+}
+
+function parseToken(token: string, id: number): Piece {
+  if (token === '@') return { id, color: null, special: 'prism' };
+  const color = (COLOR_CODES as readonly string[]).indexOf(token[0] ?? '');
+  const suffix = token.slice(1);
+  const special = suffix === '' ? 'none' : (Object.entries(SPECIAL_SUFFIX).find(([, v]) => v === suffix)?.[0] as Special | undefined);
+  if (color < 0 || special === undefined) throw new RangeError(`unknown token '${token}'`);
+  return { id, color, special };
 }

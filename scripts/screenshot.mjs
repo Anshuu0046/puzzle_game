@@ -24,6 +24,53 @@ async function launch() {
   }
 }
 
+// Every special on one board, no matches. (3,4) Line Blaster + (3,3) Burst Bomb is a combo.
+const SHOWCASE = `
+  R O Y G B P R O
+  O R- Y| G* B P O R
+  Y G @ B P R O Y
+  G B P R* O- Y G B
+  B P R O Y G B| P
+  P R O Y G B P R
+  R O* G B P R O Y
+  O Y B P R O Y G`;
+
+async function drag(page, from, to) {
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 6 });
+  await page.mouse.up();
+}
+
+/** Staged board: all special pieces, a Line + Burst combo mid-blast, and the idle hint. */
+async function specialsScenario(page, name) {
+  await page.evaluate((text) => window.__sugarBloom.loadBoard(text), SHOWCASE);
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: new URL(`${name}-5-specials.png`, OUT).pathname });
+
+  const [from, to] = await page.evaluate(() => [
+    window.__sugarBloom.cellToClient({ row: 3, col: 4 }),
+    window.__sugarBloom.cellToClient({ row: 3, col: 3 }),
+  ]);
+  const before = await page.evaluate(() => window.__sugarBloom.game.score);
+  if (await page.evaluate(() => navigator.maxTouchPoints > 0)) {
+    await page.touchscreen.tap(from.x, from.y);
+    await page.touchscreen.tap(to.x, to.y);
+  } else {
+    await drag(page, from, to);
+  }
+  await page.waitForTimeout(230);
+  await page.screenshot({ path: new URL(`${name}-6-combo.png`, OUT).pathname });
+  await waitIdle(page);
+  const after = await page.evaluate(() => window.__sugarBloom.game.score);
+
+  await page.evaluate((text) => window.__sugarBloom.loadBoard(text), SHOWCASE);
+  await page.evaluate(() => window.__sugarBloom.showHint());
+  await page.waitForTimeout(330);
+  await page.screenshot({ path: new URL(`${name}-7-hint.png`, OUT).pathname });
+  return after > before;
+}
+
 const waitIdle = (page) => page.waitForFunction(() => window.__sugarBloom?.isIdle() === true, null, { timeout: 15000 });
 
 async function run() {
@@ -69,10 +116,7 @@ async function run() {
         await page.screenshot({ path: new URL(`${vp.name}-2-selected.png`, OUT).pathname });
         await page.touchscreen.tap(before.b.x, before.b.y);
       } else {
-        await page.mouse.move(before.a.x, before.a.y);
-        await page.mouse.down();
-        await page.mouse.move(before.b.x, before.b.y, { steps: 8 });
-        await page.mouse.up();
+        await drag(page, before.a, before.b);
       }
       await page.waitForTimeout(260);
       await page.screenshot({ path: new URL(`${vp.name}-3-mid.png`, OUT).pathname });
@@ -93,7 +137,9 @@ async function run() {
           `HUD ${hudOk ? 'OK' : 'MISMATCH'} (${after.hudMoves} / ${after.hudScore})`,
       );
       if (errors.length) console.log(`${vp.name}: page errors:\n  ${errors.join('\n  ')}`);
-      failed ||= !swapped || !hudOk || errors.length > 0;
+      const comboOk = await specialsScenario(page, vp.name);
+      console.log(`${vp.name}: special combo ${comboOk ? 'OK' : 'FAILED'}`);
+      failed ||= !swapped || !hudOk || !comboOk || errors.length > 0;
       await context.close();
     }
   } finally {

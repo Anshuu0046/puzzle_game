@@ -1,10 +1,10 @@
 import type { Board } from './board';
-import type { BoardEvent, Fall, PlacedPiece, Spawn } from './events';
+import type { BoardEvent } from './events';
 import { IdSource, generateBoard } from './generate';
-import { findGroups, isInMatch } from './match';
+import { isInMatch } from './match';
 import { bestMove, hasMove } from './moves';
 import { Rng } from './rng';
-import { groupPoints } from './scoring';
+import { Resolver, isComboSwap } from './resolve';
 import { shuffleBoard } from './shuffle';
 import { type Color, MAX_COLORS, type Move, type Pos, isAdjacent } from './types';
 
@@ -30,9 +30,6 @@ export interface TurnResult {
   readonly cascades: number;
   readonly shuffled: boolean;
 }
-
-/** Safety net: real cascades stop long before this. */
-const MAX_CASCADES = 100;
 
 /**
  * One play session of a level. Owns the board, RNG, score and move count. The only way to change
@@ -99,36 +96,18 @@ export class Game {
     if (this.statusValue !== 'playing') return reject([]);
     if (!isAdjacent(a, b) || !board.get(a) || !board.get(b)) return reject([]);
 
+    const pa = board.get(a)!;
+    const pb = board.get(b)!;
     board.swap(a, b);
-    if (!isInMatch(board, a) && !isInMatch(board, b)) {
+    if (!isComboSwap(pa, pb) && !isInMatch(board, a) && !isInMatch(board, b)) {
       board.swap(a, b);
       return reject([{ type: 'swapRejected', a, b }]);
     }
 
-    const events: BoardEvent[] = [{ type: 'swapped', a, b }];
-    let points = 0;
-    let cascade = 0;
-    for (;;) {
-      const groups = findGroups(board);
-      if (groups.length === 0) break;
-      if (++cascade > MAX_CASCADES) throw new Error('cascade limit exceeded');
-
-      events.push({ type: 'matched', cascade, groups });
-      const cleared: PlacedPiece[] = [];
-      for (const group of groups) {
-        for (const p of group.cells) {
-          cleared.push({ pos: p, piece: board.get(p)! });
-          board.set(p, null);
-        }
-      }
-      events.push({ type: 'cleared', cascade, pieces: cleared });
-
-      const stepPoints = groups.reduce((sum, g) => sum + groupPoints(g, cascade), 0);
-      points += stepPoints;
-      events.push({ type: 'scored', cascade, points: stepPoints, total: this.scoreValue + points });
-
-      this.settle(events);
-    }
+    const resolver = new Resolver(board, this.palette, this.rng, this.ids, this.scoreValue);
+    const cascade = resolver.resolveSwap(a, b);
+    const events: BoardEvent[] = [{ type: 'swapped', a, b }, ...resolver.events];
+    const points = resolver.points;
 
     let shuffled = false;
     if (!hasMove(board)) {
@@ -142,36 +121,5 @@ export class Game {
     else if (this.movesLeftValue <= 0) this.statusValue = 'lost';
 
     return { accepted: true, events, points, cascades: cascade, shuffled };
-  }
-
-  /** Gravity then refill: pieces drop past holes to the lowest free cells; new ones enter from the top. */
-  private settle(events: BoardEvent[]): void {
-    const board = this.boardState;
-    const falls: Fall[] = [];
-    const spawns: Spawn[] = [];
-    for (let c = 0; c < board.cols; c++) {
-      const cells = board.column(c);
-      if (cells.length === 0) continue;
-      let write = cells.length - 1;
-      for (let read = cells.length - 1; read >= 0; read--) {
-        const piece = board.get(cells[read]!);
-        if (!piece) continue;
-        if (read !== write) {
-          board.set(cells[write]!, piece);
-          board.set(cells[read]!, null);
-          falls.push({ piece, from: cells[read]!, to: cells[write]! });
-        }
-        write--;
-      }
-      const empty = write + 1;
-      const topRow = cells[0]!.row;
-      for (let i = 0; i < empty; i++) {
-        const piece = { id: this.ids.next(), color: this.rng.pick(this.palette) };
-        board.set(cells[i]!, piece);
-        spawns.push({ piece, to: cells[i]!, startRow: topRow - (empty - i) });
-      }
-    }
-    if (falls.length > 0) events.push({ type: 'fell', falls });
-    if (spawns.length > 0) events.push({ type: 'spawned', spawns });
   }
 }

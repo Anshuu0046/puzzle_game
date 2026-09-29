@@ -1,10 +1,17 @@
 import type { Board } from './board';
 import { findGroups, isInMatch } from './match';
-import { type Move, type Pos, isAdjacent, pos } from './types';
+import { isComboSwap } from './resolve';
+import { type Move, type Pos, isAdjacent, pos, samePos } from './types';
 
-/** True if swapping a and b is a legal move: adjacent, both hold pieces, and a match results. */
+/**
+ * True if swapping a and b is a legal move: adjacent, both hold pieces, and either a match results
+ * or it is a combo swap (any Prism Orb, or two specials).
+ */
 export function isValidSwap(board: Board, a: Pos, b: Pos): boolean {
-  if (!isAdjacent(a, b) || !board.get(a) || !board.get(b)) return false;
+  const pa = board.get(a);
+  const pb = board.get(b);
+  if (!isAdjacent(a, b) || !pa || !pb) return false;
+  if (isComboSwap(pa, pb)) return true;
   board.swap(a, b);
   const ok = isInMatch(board, a) || isInMatch(board, b);
   board.swap(a, b);
@@ -31,20 +38,36 @@ export function hasMove(board: Board): boolean {
   return false;
 }
 
-/**
- * The move to suggest as a hint: the one that clears the most cells right away (bigger shapes
- * first), ties broken by board order so hints are stable.
- */
+const SPECIAL_VALUE = { none: 0, lineBlaster: 40, burstBomb: 60, prismOrb: 100 } as const;
+
+/** Rough immediate value of a legal move, used to pick hints. */
+export function moveValue(board: Board, move: Move): number {
+  const pa = board.get(move.a)!;
+  const pb = board.get(move.b)!;
+  if (isComboSwap(pa, pb)) {
+    const prisms = [pa, pb].filter((p) => p.special === 'prism').length;
+    const specials = [pa, pb].filter((p) => p.special !== 'none').length;
+    return 200 + prisms * 300 + specials * 100;
+  }
+  board.swap(move.a, move.b);
+  const value = findGroups(board)
+    .filter((g) => g.cells.some((p) => samePos(p, move.a) || samePos(p, move.b)))
+    .reduce(
+      (sum, g) =>
+        sum + g.cells.length * 10 + SPECIAL_VALUE[g.special] + g.cells.filter((p) => board.get(p)!.special !== 'none').length * 30,
+      0,
+    );
+  board.swap(move.a, move.b);
+  return value;
+}
+
+/** The move to suggest as a hint: highest immediate value, ties broken by board order. */
 export function bestMove(board: Board): Move | null {
   const work = board.clone();
   let best: Move | null = null;
   let bestValue = -1;
   for (const move of findMoves(work)) {
-    work.swap(move.a, move.b);
-    const value = findGroups(work)
-      .filter((g) => g.cells.some((p) => (p.row === move.a.row && p.col === move.a.col) || (p.row === move.b.row && p.col === move.b.col)))
-      .reduce((sum, g) => sum + g.cells.length * 10 + (g.special === 'none' ? 0 : 25), 0);
-    work.swap(move.a, move.b);
+    const value = moveValue(work, move);
     if (value > bestValue) {
       bestValue = value;
       best = move;

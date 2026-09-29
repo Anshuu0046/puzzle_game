@@ -12,6 +12,10 @@ export const MOTION = {
   fallPerRow: 0.09,
   fallEase: 'power2.in',
   landSquash: 0.08,
+  /** Matched pieces sliding into the special they form. */
+  merge: 0.16,
+  /** Gap between chained special activations. */
+  chainStep: 0.12,
   shuffle: 0.45,
   shuffleEase: 'power3.inOut',
 } as const;

@@ -7,4 +7,5 @@ export * from './generate';
 export * from './shuffle';
 export * from './events';
 export * from './scoring';
+export * from './resolve';
 export * from './game';

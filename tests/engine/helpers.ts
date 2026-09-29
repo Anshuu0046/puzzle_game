@@ -42,6 +42,14 @@ export function replay(before: Board, events: readonly BoardEvent[]): Board {
           b.set(s.to, s.piece);
         }
         break;
+      case 'transformed':
+        if (b.get(e.pos)?.id !== e.piece.id) throw new Error('transformed piece is not at its position');
+        b.set(e.pos, e.piece);
+        break;
+      case 'specialCreated':
+        if (b.get(e.pos) !== null) throw new Error('special created on an occupied cell');
+        b.set(e.pos, e.piece);
+        break;
       case 'shuffled': {
         const snapshot = b.clone();
         for (const m of e.moves) {
@@ -58,5 +66,5 @@ export function replay(before: Board, events: readonly BoardEvent[]): Board {
 }
 
 export function signature(b: Board): string {
-  return b.positions.map((p) => `${b.get(p)?.id ?? '-'}:${b.get(p)?.color ?? '-'}`).join(' ');
+  return b.positions.map((p) => `${b.get(p)?.id ?? '-'}:${b.get(p)?.color ?? '-'}:${b.get(p)?.special ?? '-'}`).join(' ');
 }

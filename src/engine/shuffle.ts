@@ -3,7 +3,7 @@ import { fillWithoutMatches } from './generate';
 import { hasMatch } from './match';
 import { hasMove } from './moves';
 import type { Rng } from './rng';
-import type { Color, Piece, Pos } from './types';
+import { type Color, type Piece, type Pos, plain, posKey } from './types';
 
 export interface ShuffleMove {
   readonly from: Pos;
@@ -33,10 +33,12 @@ export function shuffleBoard(board: Board, colors: readonly Color[], rng: Rng): 
     place(rng.shuffle([...pieces]));
     ok = !hasMatch(board) && hasMove(board);
   }
-  const ids = slots.map((p) => board.get(p)!.id);
+  // Fallback: keep the shuffled spots, keep specials as they are, give plain pieces new colors.
+  const plainSlots = slots.filter((p) => board.get(p)!.special === 'none');
+  const ids = new Map(plainSlots.map((p) => [posKey(p), board.get(p)!.id]));
   for (let i = 0; i < RECOLOR_ATTEMPTS && !ok; i++) {
-    slots.forEach((p) => board.set(p, null));
-    const filled = fillWithoutMatches(board, colors, rng, (p, color) => ({ id: ids[slots.indexOf(p)]!, color }));
+    plainSlots.forEach((p) => board.set(p, null));
+    const filled = fillWithoutMatches(board, colors, rng, (p, color) => plain(ids.get(posKey(p))!, color));
     ok = filled && hasMove(board);
   }
   if (!ok) throw new Error('board shape cannot be shuffled into a playable layout');

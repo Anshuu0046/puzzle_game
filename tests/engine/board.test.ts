@@ -20,7 +20,7 @@ describe('Board', () => {
     const b = Board.parse('R #\nY G');
     expect(b.isPlayable(P(0, 1))).toBe(false);
     expect(b.get(P(0, 1))).toBeNull();
-    expect(() => b.set(P(0, 1), { id: 9, color: 0 })).toThrow();
+    expect(() => b.set(P(0, 1), { id: 9, color: 0, special: 'none' })).toThrow();
     expect(b.positions).toHaveLength(3);
   });
 
@@ -50,6 +50,17 @@ describe('Board', () => {
     b.swap(P(0, 0), P(0, 1));
     expect(a.dump()).toBe('R O\nY G');
     expect(b.dump()).toBe('O R\nY G');
+  });
+
+  it('parses and dumps specials', () => {
+    const text = 'R- G| B*\n@ Y P';
+    const b = Board.parse(text);
+    expect(b.dump()).toBe(text);
+    expect(b.get(P(0, 0))).toMatchObject({ color: 0, special: 'lineH' });
+    expect(b.get(P(0, 1))).toMatchObject({ color: 3, special: 'lineV' });
+    expect(b.get(P(0, 2))).toMatchObject({ color: 4, special: 'burst' });
+    expect(b.get(P(1, 0))).toMatchObject({ color: null, special: 'prism' });
+    expect(() => Board.parse('R+')).toThrow();
   });
 
   it('reports fullness', () => {

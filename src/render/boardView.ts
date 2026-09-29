@@ -1,9 +1,19 @@
 import { gsap } from 'gsap';
 import { Container, Graphics, Rectangle, Sprite } from 'pixi.js';
-import type { Board, BoardEvent, Piece, Pos } from '../engine';
+import { type Board, type BoardEvent, type Move, type Piece, type Pos, posKey } from '../engine';
+import { FxLayer } from './fx';
 import { MOTION } from './motion';
 import type { PieceTextures } from './pieceArt';
-import { BOARD } from './theme';
+import { BOARD, PIECE_COLORS } from './theme';
+
+type EventOf<T extends BoardEvent['type']> = Extract<BoardEvent, { type: T }>;
+
+const wait = (seconds: number) => new Promise<void>((resolve) => gsap.delayedCall(seconds, resolve));
+
+/** Blast tint for a piece: its own color, or white for the colorless Prism Orb. */
+function tint(piece: Piece): number {
+  return piece.color === null ? 0xffffff : parseInt(PIECE_COLORS[piece.color]!.base.slice(1), 16);
+}
 
 /** Fraction of a cell a piece occupies. */
 const PIECE_FILL = 0.9;
@@ -17,6 +27,8 @@ interface PieceNode {
   /** Holds scale/rotation tweens; the sprite inside keeps the texture fit. */
   node: Container;
   sprite: Sprite;
+  /** Already playing its clear animation (hit by a blast before the step's 'cleared' event). */
+  popped?: boolean;
 }
 
 export interface Rect {
@@ -51,11 +63,16 @@ export class BoardView {
   private pending = 0;
   private snapPending = false;
 
+  private readonly fx = new FxLayer();
+  private hintNodes: PieceNode[] = [];
+
   onScore: (total: number) => void = () => {};
+  /** Called as each event starts playing (sound, HUD, combo text). */
+  onEvent: (e: BoardEvent) => void = () => {};
 
   constructor(private textures: PieceTextures) {
     this.pieceLayer.mask = this.pieceMask;
-    this.root.addChild(this.panel, this.tiles, this.selectionRing, this.pieceLayer, this.pieceMask);
+    this.root.addChild(this.panel, this.tiles, this.selectionRing, this.pieceLayer, this.pieceMask, this.fx.root);
   }
 
   get cell(): number {
@@ -73,6 +90,8 @@ export class BoardView {
 
   /** Replaces the whole view state with a board snapshot (new level, or resync). */
   setBoard(board: Board): void {
+    this.clearHint();
+    this.fx.clear();
     for (const n of this.nodes.values()) this.destroyNode(n);
     this.nodes.clear();
     this.rows = board.rows;
@@ -133,10 +152,52 @@ export class BoardView {
     const old = this.textures;
     this.textures = textures;
     for (const n of this.nodes.values()) {
-      n.sprite.texture = textures.get(n.piece.color);
+      n.sprite.texture = textures.get(n.piece);
       this.fitSprite(n);
     }
     if (old !== textures) old.destroy();
+  }
+
+  /** Gently nudges the two pieces of a suggested move toward each other until cleared. */
+  showHint(move: Move): void {
+    this.clearHint();
+    const a = this.nodeAt(move.a);
+    const b = this.nodeAt(move.b);
+    if (!a || !b) return;
+    this.hintNodes = [a, b];
+    const nudge = this.cellSize * 0.12;
+    for (const [n, from, to] of [
+      [a, move.a, move.b],
+      [b, move.b, move.a],
+    ] as const) {
+      const home = this.cellCenter(from);
+      gsap.to(n.node, {
+        x: home.x + Math.sign(to.col - from.col) * nudge,
+        y: home.y + Math.sign(to.row - from.row) * nudge,
+        duration: 0.35,
+        ease: 'sine.inOut',
+        yoyo: true,
+        repeat: -1,
+        repeatDelay: 0.15,
+      });
+      gsap.to(n.node.scale, { x: 1.08, y: 1.08, duration: 0.35, ease: 'sine.inOut', yoyo: true, repeat: -1, repeatDelay: 0.15 });
+    }
+  }
+
+  clearHint(): void {
+    for (const n of this.hintNodes) {
+      if (n.node.destroyed) continue;
+      gsap.killTweensOf([n.node, n.node.scale]);
+      const at = this.positionOf(n.piece.id);
+      if (at) this.placeNode(n, at);
+      n.node.scale.set(1);
+    }
+    this.hintNodes = [];
+  }
+
+  private positionOf(id: number): Pos | null {
+    const i = this.grid.indexOf(id);
+    return i < 0 ? null : { row: Math.floor(i / this.cols), col: i % this.cols };
   }
 
   /** Board-local center of a cell. */
@@ -186,14 +247,29 @@ export class BoardView {
   }
 
   private async playAll(events: readonly BoardEvent[]): Promise<void> {
+    this.clearHint();
     for (let i = 0; i < events.length; i++) {
       const e = events[i]!;
       // Falls and spawns of one cascade step animate together.
       if (e.type === 'fell' && events[i + 1]?.type === 'spawned') {
-        const next = events[++i] as Extract<BoardEvent, { type: 'spawned' }>;
+        const next = events[++i] as EventOf<'spawned'>;
+        this.onEvent(e);
+        this.onEvent(next);
         await Promise.all([this.playFell(e), this.playSpawned(next)]);
         continue;
       }
+      if (e.type === 'cleared') {
+        // Pieces that form a new special slide into it instead of just popping.
+        const merges = new Map<string, Pos>();
+        for (let j = i + 1; j < events.length && events[j]!.type === 'specialCreated'; j++) {
+          const created = events[j] as EventOf<'specialCreated'>;
+          for (const p of created.from) merges.set(posKey(p), created.pos);
+        }
+        this.onEvent(e);
+        await this.playCleared(e, merges);
+        continue;
+      }
+      this.onEvent(e);
       await this.playEvent(e);
     }
   }
@@ -221,20 +297,30 @@ export class BoardView {
         return;
       }
       case 'cleared':
-        await Promise.all(
-          e.pieces.map(({ pos, piece }) => {
-            const n = this.nodes.get(piece.id);
-            this.setGrid(pos, null);
-            if (!n) return null;
-            this.nodes.delete(piece.id);
-            return gsap
-              .timeline()
-              .to(n.node.scale, { x: 0, y: 0, duration: MOTION.clear, ease: MOTION.clearEase }, 0)
-              .to(n.node, { alpha: 0, rotation: 0.4, duration: MOTION.clear, ease: 'power1.in' }, 0)
-              .then(() => this.destroyNode(n));
-          }),
-        );
+        await this.playCleared(e, new Map());
         return;
+      case 'specialActivated':
+        await this.playActivated(e);
+        return;
+      case 'transformed': {
+        const n = this.nodes.get(e.piece.id);
+        if (!n) return;
+        n.piece = e.piece;
+        n.sprite.texture = this.textures.get(e.piece);
+        gsap.fromTo(n.node.scale, { x: 1.35, y: 1.35 }, { x: 1, y: 1, duration: 0.25, ease: 'back.out(3)' });
+        await wait(0.04);
+        return;
+      }
+      case 'specialCreated': {
+        const n = this.createNode(e.piece);
+        this.placeNode(n, e.pos);
+        this.setGrid(e.pos, e.piece.id);
+        n.node.scale.set(0);
+        const { x, y } = this.cellCenter(e.pos);
+        this.fx.ring(x, y, this.cellSize * 0.2, this.cellSize * 0.8, this.cellSize * 0.08, tint(e.piece));
+        await gsap.to(n.node.scale, { x: 1, y: 1, duration: 0.3, ease: 'back.out(3)' }).then();
+        return;
+      }
       case 'scored':
         this.onScore(e.total);
         return;
@@ -248,6 +334,99 @@ export class BoardView {
         await this.playShuffled(e);
         return;
     }
+  }
+
+  private playCleared(e: EventOf<'cleared'>, merges: ReadonlyMap<string, Pos>): Promise<unknown> {
+    return Promise.all(
+      e.pieces.map(({ pos, piece }) => {
+        const n = this.nodes.get(piece.id);
+        this.setGrid(pos, null);
+        if (!n) return null;
+        this.nodes.delete(piece.id);
+        const target = merges.get(posKey(pos));
+        if (target && !n.popped) {
+          const { x, y } = this.cellCenter(target);
+          return gsap
+            .timeline()
+            .to(n.node, { x, y, duration: MOTION.merge, ease: 'power2.in' }, 0)
+            .to(n.node.scale, { x: 0.5, y: 0.5, duration: MOTION.merge, ease: 'power2.in' }, 0)
+            .to(n.node, { alpha: 0, duration: 0.06 }, MOTION.merge - 0.04)
+            .then(() => this.destroyNode(n));
+        }
+        if (n.popped) return wait(MOTION.clear).then(() => this.destroyNode(n));
+        return this.popNode(n).then(() => this.destroyNode(n));
+      }),
+    );
+  }
+
+  /** Blast visuals; chained activations follow each other quickly. */
+  private async playActivated(e: EventOf<'specialActivated'>): Promise<void> {
+    const s = this.cellSize;
+    const { x, y } = this.cellCenter(e.pos);
+    const color = tint(e.piece);
+    const n = this.nodeAt(e.pos);
+    if (n && !n.popped) gsap.to(n.node.scale, { x: 1.3, y: 1.3, duration: 0.1, ease: 'power2.out', yoyo: true, repeat: 1 });
+    const width = this.cols * s;
+    const height = this.rows * s;
+    const rowBeam = (row: number) => this.fx.beam(width / 2, (row + 0.5) * s, true, width, s * 0.6, color);
+    const colBeam = (col: number) => this.fx.beam((col + 0.5) * s, height / 2, false, height, s * 0.6, color);
+    const targets = () => e.cells.map((p) => this.cellCenter(p));
+    switch (e.effect) {
+      case 'row':
+        rowBeam(e.pos.row);
+        break;
+      case 'column':
+        colBeam(e.pos.col);
+        break;
+      case 'cross':
+        rowBeam(e.pos.row);
+        colBeam(e.pos.col);
+        break;
+      case 'tripleCross':
+        for (let d = -1; d <= 1; d++) {
+          if (e.pos.row + d >= 0 && e.pos.row + d < this.rows) rowBeam(e.pos.row + d);
+          if (e.pos.col + d >= 0 && e.pos.col + d < this.cols) colBeam(e.pos.col + d);
+        }
+        break;
+      case 'burst':
+        this.fx.ring(x, y, s * 0.3, s * 1.7, s * 0.25, color);
+        break;
+      case 'megaBurst':
+        this.fx.ring(x, y, s * 0.5, s * 2.9, s * 0.35, color);
+        this.fx.ring(x, y, s * 0.2, s * 1.8, s * 0.2, 0xffffff);
+        break;
+      case 'colorClear':
+      case 'prismLines':
+      case 'prismBursts':
+        this.fx.rays(x, y, targets(), 0xffd6ec);
+        this.fx.ring(x, y, s * 0.3, s * 1.4, s * 0.15, 0xffffff);
+        break;
+      case 'boardWipe':
+        this.fx.rays(x, y, targets(), 0xffd6ec);
+        this.fx.flash(-s * 0.2, -s * 0.2, width + s * 0.4, height + s * 0.4, s * 0.3);
+        break;
+    }
+    // Pieces pop as the blast reaches them (converted pieces must survive to fire themselves).
+    if (e.effect !== 'prismLines' && e.effect !== 'prismBursts') {
+      gsap.delayedCall(0.06, () => {
+        for (const p of e.cells) {
+          const hit = this.nodeAt(p);
+          if (hit && !hit.popped) this.popNode(hit);
+        }
+      });
+    }
+    await wait(e.effect === 'prismLines' || e.effect === 'prismBursts' ? 0.3 : MOTION.chainStep);
+  }
+
+  /** Clear animation. The node stays registered until the engine's 'cleared' event removes it. */
+  private popNode(n: PieceNode): Promise<unknown> {
+    n.popped = true;
+    gsap.killTweensOf([n.node, n.node.scale]);
+    return gsap
+      .timeline()
+      .to(n.node.scale, { x: 0, y: 0, duration: MOTION.clear, ease: MOTION.clearEase }, 0)
+      .to(n.node, { alpha: 0, rotation: 0.4, duration: MOTION.clear, ease: 'power1.in' }, 0)
+      .then();
   }
 
   private playFell(e: Extract<BoardEvent, { type: 'fell' }>): Promise<unknown> {
@@ -279,7 +458,7 @@ export class BoardView {
       e.moves.map((m) => {
         const n = this.nodes.get(m.piece.id);
         if (!n) return null;
-        if (n.piece.color !== m.piece.color) n.sprite.texture = this.textures.get(m.piece.color);
+        if (n.piece.color !== m.piece.color || n.piece.special !== m.piece.special) n.sprite.texture = this.textures.get(m.piece);
         n.piece = m.piece;
         const { x, y } = this.cellCenter(m.to);
         return gsap
@@ -337,7 +516,7 @@ export class BoardView {
   }
 
   private createNode(piece: Piece): PieceNode {
-    const sprite = new Sprite(this.textures.get(piece.color));
+    const sprite = new Sprite(this.textures.get(piece));
     sprite.anchor.set(0.5);
     const node = new Container();
     node.addChild(sprite);

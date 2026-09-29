@@ -42,7 +42,7 @@ function scanLine(board: Board, line: Pos[], horizontal: boolean, out: Run[]): v
   while (start < line.length) {
     const color = board.get(line[start]!)?.color;
     let end = start + 1;
-    if (color !== undefined) {
+    if (color != null) {
       while (end < line.length && board.get(line[end]!)?.color === color) end++;
       if (end - start >= 3) out.push({ color, horizontal, cells: line.slice(start, end) });
     }
@@ -124,7 +124,7 @@ export function hasMatch(board: Board): boolean {
 /** Cheap local check: is the piece at p part of a horizontal or vertical run of 3+? */
 export function isInMatch(board: Board, p: Pos): boolean {
   const color = board.get(p)?.color;
-  if (color === undefined) return false;
+  if (color == null) return false;
   const count = (dr: number, dc: number): number => {
     let n = 0;
     let q = pos(p.row + dr, p.col + dc);

@@ -14,11 +14,27 @@ export const MAX_COLORS = COLOR_NAMES.length;
 /** Single-letter codes used by Board.parse/dump in tests and debug output. */
 export const COLOR_CODES = ['R', 'O', 'Y', 'G', 'B', 'P'] as const;
 
-/** A piece on the board. `id` is unique for the whole game so the renderer can track it. */
+/**
+ * Special pieces:
+ * - `lineH` / `lineV`: Line Blaster, sweeps its row / column when it goes off
+ * - `burst`: Burst Bomb, 3x3 blast
+ * - `prism`: Prism Orb, colorless; clears every piece of one color
+ */
+export type Special = 'none' | 'lineH' | 'lineV' | 'burst' | 'prism';
+
+/**
+ * A piece on the board. `id` is unique for the whole game so the renderer can track it.
+ * `color` is null only for Prism Orbs.
+ */
 export interface Piece {
   readonly id: number;
-  readonly color: Color;
+  readonly color: Color | null;
+  readonly special: Special;
 }
+
+export const plain = (id: number, color: Color): Piece => ({ id, color, special: 'none' });
+
+export const isLine = (s: Special): boolean => s === 'lineH' || s === 'lineV';
 
 export interface Move {
   readonly a: Pos;

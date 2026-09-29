@@ -38,7 +38,7 @@ describe('board generation', () => {
   it('only uses the level palette', () => {
     for (let seed = 1; seed <= 50; seed++) {
       const b = generateBoard(EIGHT_BY_EIGHT, [0, 1, 2, 3], new Rng(seed), new IdSource());
-      expect(b.pieces().every(({ piece }) => piece.color <= 3)).toBe(true);
+      expect(b.pieces().every(({ piece }) => (piece.color ?? 0) <= 3)).toBe(true);
       expect(hasMatch(b)).toBe(false);
     }
   });

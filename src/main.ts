@@ -1,7 +1,7 @@
 import './ui/style.css';
 import { Application } from 'pixi.js';
 import { LEVELS } from './data/levels';
-import { Game, type Pos } from './engine';
+import { Board, Game, type Pos } from './engine';
 import { BoardInput } from './render/boardInput';
 import { BoardView } from './render/boardView';
 import { PieceTextures } from './render/pieceArt';
@@ -12,6 +12,8 @@ import { EndOverlay } from './ui/overlay';
 const SIDE_MARGIN = 16;
 const HUD_GAP = 16;
 const BOTTOM_MARGIN = 24;
+/** Idle time before the board suggests a move. */
+const HINT_DELAY_MS = 5000;
 
 declare global {
   interface Window {
@@ -20,6 +22,9 @@ declare global {
       readonly game: Game;
       cellToClient(p: Pos): { x: number; y: number };
       isIdle(): boolean;
+      /** Replaces the board with a scripted layout (see Board.parse). */
+      loadBoard(text: string): void;
+      showHint(): void;
     };
   }
 }
@@ -90,9 +95,24 @@ async function boot(): Promise<void> {
   void document.fonts.ready.then(scheduleLayout);
   await relayout();
 
+  let hintTimer = 0;
+  const scheduleHint = () => {
+    window.clearTimeout(hintTimer);
+    view.clearHint();
+    hintTimer = window.setTimeout(() => {
+      if (view.busy || game.status !== 'playing') return;
+      const move = game.hint();
+      if (move) view.showHint(move);
+    }, HINT_DELAY_MS);
+  };
+  // Capture phase: runs before the board's own handlers, so a new selection isn't undone.
+  window.addEventListener('pointerdown', scheduleHint, { capture: true });
+  window.addEventListener('keydown', scheduleHint, { capture: true });
+
   const restart = () => {
     game = Game.start(level, newSeed());
     showLevel();
+    scheduleHint();
   };
 
   const onSwap = (a: Pos, b: Pos) => {
@@ -102,8 +122,10 @@ async function boot(): Promise<void> {
     if (result.accepted) hud.setMoves(game.movesLeft);
     void view.play(result.events).then(() => {
       if (game.status !== 'playing') overlay.show(game.status === 'won', game.score, restart);
+      else scheduleHint();
     });
   };
+  scheduleHint();
   new BoardInput(view, onSwap, () => view.busy || game.status !== 'playing');
 
   if (import.meta.env.DEV) {
@@ -113,6 +135,14 @@ async function boot(): Promise<void> {
       },
       cellToClient: (p) => view.root.toGlobal(view.cellCenter(p)),
       isIdle: () => !view.busy,
+      loadBoard: (text) => {
+        game = Game.fromBoard(Board.parse(text), level, 1);
+        showLevel();
+      },
+      showHint: () => {
+        const move = game.hint();
+        if (move) view.showHint(move);
+      },
     };
   }
 }
