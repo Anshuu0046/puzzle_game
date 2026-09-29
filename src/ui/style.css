@@ -1,0 +1,204 @@
+@import './tokens.css';
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body {
+  font-family: var(--font-ui);
+  color: var(--color-ink);
+  background:
+    radial-gradient(circle at 15% 10%, rgba(255, 255, 255, 0.8) 0 8%, transparent 30%),
+    radial-gradient(circle at 90% 85%, rgba(255, 214, 236, 0.9) 0 10%, transparent 35%),
+    linear-gradient(180deg, var(--color-bg-top), var(--color-bg-mid) 50%, var(--color-bg-bottom));
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  touch-action: none;
+}
+
+#stage {
+  position: fixed;
+  inset: 0;
+}
+
+#stage canvas {
+  display: block;
+}
+
+/* ---------- HUD ---------- */
+.hud {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(100%, 640px);
+  padding: calc(var(--space-2) + env(safe-area-inset-top)) var(--space-2) 0;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: stretch;
+  gap: var(--space-1);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.hud__pill {
+  background: var(--color-surface);
+  backdrop-filter: blur(8px);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-pill);
+  padding: var(--space-1) var(--space-2);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 72px;
+}
+
+.hud__label {
+  font-size: var(--text-xs);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ink-soft);
+}
+
+.hud__value {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--text-lg);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.hud__goal {
+  align-items: stretch;
+  gap: var(--space-half);
+}
+
+.hud__title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--text-md);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hud__track {
+  height: var(--space-1);
+  border-radius: var(--radius-pill);
+  background: var(--color-track);
+  overflow: hidden;
+}
+
+.hud__fill {
+  height: 100%;
+  width: 0%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--color-accent), var(--color-accent-2));
+  transition: width 400ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.hud__target {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--color-ink-soft);
+  text-align: center;
+}
+
+@media (min-width: 768px) {
+  .hud {
+    padding-top: var(--space-3);
+    gap: var(--space-2);
+  }
+  .hud__pill {
+    min-width: 104px;
+    padding: var(--space-1) var(--space-3);
+  }
+  .hud__value {
+    font-size: var(--text-xl);
+  }
+  .hud__title {
+    font-size: var(--text-lg);
+  }
+}
+
+/* ---------- End-of-level card ---------- */
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--space-3);
+  background: rgba(74, 35, 80, 0.28);
+  backdrop-filter: blur(4px);
+  z-index: 10;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 250ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.overlay--visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.overlay__card {
+  width: min(100%, 360px);
+  background: var(--color-surface-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+  padding: var(--space-4) var(--space-3) var(--space-3);
+  text-align: center;
+  transform: scale(0.85);
+  transition: transform 400ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.overlay--visible .overlay__card {
+  transform: scale(1);
+}
+
+.overlay__title {
+  margin: 0 0 var(--space-1);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--text-2xl);
+  color: var(--color-accent-deep);
+}
+
+.overlay__text {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-md);
+  font-weight: 700;
+  color: var(--color-ink-soft);
+}
+
+.button {
+  appearance: none;
+  border: 0;
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--text-lg);
+  color: #fff;
+  padding: var(--space-2) var(--space-5);
+  border-radius: var(--radius-pill);
+  background: linear-gradient(180deg, #ff7aa3, var(--color-accent-deep));
+  box-shadow: 0 4px 0 #b8285a, var(--shadow-pill);
+  transition: transform 120ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.button:active {
+  transform: translateY(2px) scale(0.98);
+}

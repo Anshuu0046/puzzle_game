@@ -1,0 +1,47 @@
+/* Sugar Bloom design tokens. Spacing is an 8px grid; --space-half is the only 4px step. */
+:root {
+  --font-display: 'Fredoka', 'Baloo 2', 'Trebuchet MS', system-ui, sans-serif;
+  --font-ui: 'Nunito', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+  --space-half: 4px;
+  --space-1: 8px;
+  --space-2: 16px;
+  --space-3: 24px;
+  --space-4: 32px;
+  --space-5: 40px;
+  --space-6: 48px;
+
+  --radius-sm: 8px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-pill: 999px;
+
+  --color-bg-top: #ffe1ee;
+  --color-bg-mid: #fff1e6;
+  --color-bg-bottom: #e3f0ff;
+  --color-surface: rgba(255, 255, 255, 0.78);
+  --color-surface-strong: #ffffff;
+  --color-ink: #4a2350;
+  --color-ink-soft: #8d6a93;
+  --color-accent: #ff5c8d;
+  --color-accent-deep: #e23b72;
+  --color-accent-2: #8a63ff;
+  --color-track: #f6dbe8;
+
+  --color-berry: #ff4d7e;
+  --color-citrus: #ff9533;
+  --color-lemon: #ffd43b;
+  --color-mint: #34d399;
+  --color-bluebell: #4aa8ff;
+  --color-plum: #a66bff;
+
+  --shadow-soft: 0 8px 24px rgba(160, 70, 120, 0.18);
+  --shadow-pill: 0 4px 16px rgba(160, 70, 120, 0.16);
+
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-md: 16px;
+  --text-lg: 24px;
+  --text-xl: 32px;
+  --text-2xl: 40px;
+}
