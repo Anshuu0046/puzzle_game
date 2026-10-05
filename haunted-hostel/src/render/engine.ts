@@ -44,6 +44,7 @@ export class Engine {
     this.renderer.shadowMap.enabled = graphics.shadowQuality > 0;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.setClearColor(0x020304, 1);
+    this.renderer.info.autoReset = false;
 
     this.camera = new THREE.PerspectiveCamera(70, 1, 0.05, 160);
     this.scene.add(this.camera);
@@ -129,6 +130,7 @@ export class Engine {
   }
 
   render(): void {
+    this.renderer.info.reset();
     this.composer.render();
     if (this.overlay) {
       this.renderer.autoClear = false;

@@ -212,6 +212,7 @@ interface BatchEntry {
   material: THREE.Material;
   cast: boolean;
   receive: boolean;
+  arch: boolean;
 }
 
 /**
@@ -222,17 +223,17 @@ export class StaticBatcher {
   private readonly entries = new Map<string, BatchEntry>();
   private readonly v = new THREE.Vector3();
 
-  constructor(private readonly cellSize = 10.8) {}
+  constructor(private readonly cellSize = 18) {}
 
-  add(geo: THREE.BufferGeometry, material: THREE.Material, cast = true, receive = true): void {
+  add(geo: THREE.BufferGeometry, material: THREE.Material, cast = true, receive = true, arch = true): void {
     geo.computeBoundingBox();
     geo.boundingBox!.getCenter(this.v);
     const cx = Math.floor(this.v.x / this.cellSize);
     const cy = Math.floor((this.v.y + 0.5) / 3.4);
     const cz = Math.floor(this.v.z / this.cellSize);
-    const key = `${material.uuid}|${cx}|${cy}|${cz}|${cast ? 1 : 0}`;
+    const key = `${material.uuid}|${cx}|${cy}|${cz}|${cast ? 1 : 0}|${arch ? 1 : 0}`;
     let e = this.entries.get(key);
-    if (!e) this.entries.set(key, (e = { geos: [], material, cast, receive }));
+    if (!e) this.entries.set(key, (e = { geos: [], material, cast, receive, arch }));
     e.geos.push(prepForMerge(geo));
   }
 
@@ -245,7 +246,7 @@ export class StaticBatcher {
       const g = m.geometry.clone();
       g.applyMatrix4(m.matrixWorld);
       const mat = Array.isArray(m.material) ? m.material[0]! : m.material;
-      this.add(g, mat, m.castShadow || cast, receive);
+      this.add(g, mat, m.castShadow || cast, receive, false);
     });
   }
 
@@ -256,7 +257,9 @@ export class StaticBatcher {
       if (!merged) continue;
       merged.computeBoundingSphere();
       const mesh = new THREE.Mesh(merged, e.material);
-      mesh.castShadow = e.cast;
+      // Architecture only casts into the (static) moonlight shadow map; see Game.render.
+      mesh.castShadow = e.cast && !e.arch;
+      mesh.userData.archCaster = e.cast && e.arch;
       mesh.receiveShadow = e.receive;
       mesh.matrixAutoUpdate = false;
       mesh.updateMatrix();
@@ -278,4 +281,77 @@ export function at<T extends THREE.Object3D>(o: T, x: number, y: number, z: numb
 export function rotAt<T extends THREE.Object3D>(o: T, x: number, y: number, z: number): T {
   o.rotation.set(x, y, z);
   return o;
+}
+
+/**
+ * Collapses the meshes of a rigid group (one that only ever moves as a whole) into one mesh per
+ * material. Children marked `userData.anim` are animation boundaries: their subtree is left alone
+ * (but processed separately if itself marked rigid). Hit proxies and `userData.keep` meshes stay.
+ */
+export function mergeRigid(root: THREE.Object3D): void {
+  root.updateMatrixWorld(true);
+  const inv = root.matrixWorld.clone().invert();
+  const byMat = new Map<THREE.Material, { geos: THREE.BufferGeometry[]; cast: boolean }>();
+  const remove: THREE.Mesh[] = [];
+  const nested: THREE.Object3D[] = [];
+  const walk = (o: THREE.Object3D) => {
+    for (const c of o.children) {
+      if (c.userData.anim) {
+        nested.push(c);
+        continue;
+      }
+      const m = c as THREE.Mesh;
+      if (
+        m.isMesh &&
+        !m.userData.proxy &&
+        !m.userData.keep &&
+        !Array.isArray(m.material) &&
+        !(m as unknown as { isInstancedMesh?: boolean }).isInstancedMesh &&
+        m.visible
+      ) {
+        const g = m.geometry.clone();
+        g.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, m.matrixWorld));
+        let e = byMat.get(m.material);
+        if (!e) byMat.set(m.material, (e = { geos: [], cast: false }));
+        e.geos.push(prepForMerge(g));
+        e.cast ||= m.castShadow;
+        remove.push(m);
+      }
+      walk(c);
+    }
+  };
+  walk(root);
+  if (remove.length > 1) {
+    for (const m of remove) {
+      // Keep any non-mesh children (proxies, sprites) by re-parenting them to the root.
+      for (const c of [...m.children]) root.attach(c);
+      m.removeFromParent();
+    }
+    for (const [mat, e] of byMat) {
+      const merged = e.geos.length === 1 ? e.geos[0]! : mergeGeometries(e.geos, false);
+      if (!merged) continue;
+      merged.computeBoundingSphere();
+      const mesh = new THREE.Mesh(merged, mat);
+      mesh.castShadow = e.cast;
+      mesh.receiveShadow = true;
+      mesh.userData.dynamic = true;
+      root.add(mesh);
+    }
+  }
+  for (const n of nested) if (n.userData.rigid) mergeRigid(n);
+}
+
+/** Runs mergeRigid on every object marked `userData.rigid` that isn't inside another rigid group. */
+export function compactRigid(scene: THREE.Object3D): number {
+  let n = 0;
+  const visit = (o: THREE.Object3D) => {
+    if (o.userData.rigid) {
+      mergeRigid(o);
+      n++;
+      return;
+    }
+    for (const c of [...o.children]) visit(c);
+  };
+  visit(scene);
+  return n;
 }

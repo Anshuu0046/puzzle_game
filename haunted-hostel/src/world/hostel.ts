@@ -90,6 +90,18 @@ function slab(ctx: WorldCtx, x0: number, x1: number, z0: number, z1: number, yTo
   ctx.col.add({ minX: x0, maxX: x1, minZ: z0, maxZ: z1, minY: yTop - t, maxY: yTop, tag: 'floor', opaque: true });
 }
 
+/** Slab that leaves the lift shaft open so the car can travel through it. */
+function slabAroundShaft(ctx: WorldCtx, x0: number, x1: number, z0: number, z1: number, yTop: number, t = 0.2) {
+  const sx0 = LIFT.x0 - 0.15;
+  const sx1 = LIFT.x1 + 0.15;
+  const sz0 = LIFT.z0;
+  const sz1 = LIFT.z1 + 0.15;
+  slab(ctx, x0, x1, z0, sz0, yTop, t);
+  slab(ctx, x0, x1, sz1, z1, yTop, t);
+  slab(ctx, x0, sx0, sz0, sz1, yTop, t);
+  slab(ctx, sx1, x1, sz0, sz1, yTop, t);
+}
+
 export interface HostelBuild {
   doors: Map<string, Door>;
 }
@@ -107,7 +119,7 @@ export function buildHostel(ctx: WorldCtx): HostelBuild {
     // ---- Slabs (collision) ----
     if (f === 0) slab(ctx, -0.2, XMAX + 0.2, -OUTER - OUTER_T, OUTER + OUTER_T, 0, 0.4);
     else {
-      slab(ctx, -0.2, XMAX + 0.2, STAIR.zStart, OUTER + OUTER_T, L);
+      slabAroundShaft(ctx, -0.2, XMAX + 0.2, STAIR.zStart, OUTER + OUTER_T, L);
       slab(ctx, BAY, XMAX + 0.2, -OUTER - OUTER_T, STAIR.zStart, L);
     }
     // ---- Corridor ----
@@ -229,6 +241,7 @@ function buildRoomShell(ctx: WorldCtx, r: RoomDef, doors: Map<string, Door>): vo
         lockedMessage: r.lockedMessage,
         sealPaper: r.lock === 'sealed',
         scratched: r.label === '217',
+        permanent: (r.lock === 'padlock' && r.kind === 'locked') || r.lock === 'jammed',
       });
       doors.set(r.id, door);
     }
@@ -442,7 +455,7 @@ function buildLiftShaft(ctx: WorldCtx): void {
 function buildTerrace(ctx: WorldCtx, doors: Map<string, Door>): void {
   const Y = ROOF_Y;
   // Roof slab (with the stairwell hole) and its ceiling underside for the second floor rooms.
-  slab(ctx, -0.2, XMAX + 0.2, STAIR.zStart, OUTER + OUTER_T, Y, 0.2);
+  slabAroundShaft(ctx, -0.2, XMAX + 0.2, STAIR.zStart, OUTER + OUTER_T, Y, 0.2);
   slab(ctx, BAY, XMAX + 0.2, -OUTER - OUTER_T, STAIR.zStart, Y, 0.2);
   floorQuad(ctx, BAY + 0.15, XMAX + 0.2, -OUTER - OUTER_T, OUTER + OUTER_T, Y, 'concrete', 3);
   // Slab edge band.

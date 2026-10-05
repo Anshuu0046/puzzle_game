@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { MaterialLibrary } from '../render/textures/materials';
 import { CollisionWorld } from './collision';
 import { createCtx, type WorldCtx } from './context';
-import { StaticBatcher } from './geom';
+import { StaticBatcher, compactRigid } from './geom';
 import { buildHostel } from './hostel';
 import { buildInteriors } from './interiors';
 import { buildExterior, type ExteriorBuild } from './exterior';
@@ -38,6 +38,7 @@ export async function buildWorld(scene: THREE.Scene, mats: MaterialLibrary, tq: 
   await yieldFrame();
   const lift = new Lift(ctx);
   const drawCalls = batch.build(scene);
+  compactRigid(scene);
   onStep(1);
   const shelters: Shelter[] = [
     [-0.25, -1, -OUTER - OUTER_T - 0.6, XMAX + 0.25, ROOF_Y - 0.05, OUTER + OUTER_T + 0.6],

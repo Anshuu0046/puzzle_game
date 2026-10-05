@@ -85,6 +85,7 @@ export function tubeLight(
     end.rotation.z = Math.PI / 2;
     g.add(end);
   }
+  g.userData.rigid = true;
   g.position.copy(worldPos);
   g.rotation.y = rotY;
   if (opts.wall) g.rotation.x = 0;
@@ -131,6 +132,7 @@ export function bulbLight(
   g.add(glow);
   g.position.copy(pos);
   g.traverse((o) => (o.userData.dynamic = true));
+  g.userData.rigid = true;
   ctx.scene.add(g);
   return registerFixture(ctx, {
     id,
@@ -159,6 +161,7 @@ export function emergencyLight(ctx: WorldCtx, id: string, floor: number, pos: TH
   g.add(glow);
   g.position.copy(pos);
   g.rotation.y = rotY;
+  g.userData.rigid = true;
   g.traverse((o) => (o.userData.dynamic = true));
   ctx.scene.add(g);
   const out = new THREE.Vector3(0, -0.3, 0.6).applyAxisAngle(new THREE.Vector3(0, 1, 0), rotY).add(pos);
@@ -210,6 +213,9 @@ export function ceilingFan(ctx: WorldCtx, pos: THREE.Vector3, circuit: Circuit, 
     arm.add(blade);
     rotor.add(arm);
   }
+  rotor.userData.anim = true;
+  rotor.userData.rigid = true;
+  g.userData.rigid = true;
   g.add(rotor);
   g.position.copy(pos);
   g.traverse((o) => (o.userData.dynamic = true));
@@ -372,6 +378,8 @@ export function cctvCamera(ctx: WorldCtx): THREE.Group {
   g.add(lens);
   const led = new THREE.Mesh(new THREE.SphereGeometry(0.006, 6, 6), ctx.mats.emissive(0xff1010, 4));
   led.position.set(0.03, -0.02, 0.24);
+  led.userData.keep = true;
+  g.userData.rigid = true;
   g.add(led);
   g.traverse((o) => (o.userData.dynamic = true));
   let tt = Math.random() * 3;

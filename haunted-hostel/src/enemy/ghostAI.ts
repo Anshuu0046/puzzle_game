@@ -399,6 +399,13 @@ export class GhostAI {
     this.setState(state);
   }
 
+  /** Walks toward a point to investigate (scripted). */
+  investigate(p: THREE.Vector3): void {
+    this.lastKnown.copy(p);
+    this.goTo(p);
+    this.setState('INVESTIGATE');
+  }
+
   /** Immediately hunts toward the player (scripted chase start). */
   forceChase(player: THREE.Vector3): void {
     this.lastKnown.copy(player);

@@ -51,7 +51,14 @@ export function buildExterior(ctx: WorldCtx): ExteriorBuild {
   groundAt(15.5, 20.5, OUTER + OUTER_T, z1 + 0.4, 'asphalt', 0.012);
   groundAt(-4, XMAX + 6, OUTER + OUTER_T, OUTER + 3.4, 'asphalt', 0.01);
   groundAt(x0 - 20, x1 + 20, z1 + 0.4, z1 + 9, 'asphalt', 0.012);
-  groundAt(x0, x1, z0, z1, 'mud');
+  // Courtyard ground around (never under) the building footprint.
+  const bx0 = -OUTER_T - 0.01;
+  const bx1 = XMAX + OUTER_T + 0.01;
+  const bz = OUTER + OUTER_T + 0.01;
+  groundAt(x0, x1, bz, z1, 'mud');
+  groundAt(x0, x1, z0, -bz, 'mud');
+  groundAt(x0, bx0, -bz, bz, 'mud');
+  groundAt(bx1, x1, -bz, bz, 'mud');
   groundAt(x0 - 30, x1 + 30, z1 + 9, z1 + 40, 'mud');
   groundAt(x0 - 30, x0, z0 - 30, z1 + 0.4, 'mud');
   groundAt(x1, x1 + 30, z0 - 30, z1 + 0.4, 'mud');

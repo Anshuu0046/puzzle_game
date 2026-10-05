@@ -17,7 +17,7 @@ page.on('console', (m) => {
   if (!t.startsWith('[vite]')) console.log('[page]', t.slice(0, 400));
 });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message, e.stack?.slice(0, 600)));
-await page.goto(`http://127.0.0.1:5174/?autostart&debug${query}`);
+await page.goto(`${process.env.BASE ?? 'http://127.0.0.1:5174/'}?autostart&debug${query}`);
 await page.waitForFunction(() => window.__ready === true, null, { timeout: 600000 });
 await page.waitForTimeout(1500);
 if (js) {

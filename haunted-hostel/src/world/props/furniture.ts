@@ -199,6 +199,8 @@ export function almirah(ctx: WorldCtx, rng: Rng): { group: THREE.Group; doors: T
     const handle = mesh(cbox(0.02, 0.14, 0.03), ctx.mats.getBasic('chrome'), -side * (W / 2 - 0.05), 1.05, 0.03, false);
     pivot.add(handle);
     pivot.userData.side = side;
+    pivot.userData.anim = true;
+    pivot.userData.rigid = true;
     pivot.userData.dynamic = true;
     pivot.traverse((o) => (o.userData.dynamic = true));
     g.add(pivot);
@@ -206,6 +208,7 @@ export function almirah(ctx: WorldCtx, rng: Rng): { group: THREE.Group; doors: T
   }
   // Brand plate.
   g.add(mesh(cbox(0.12, 0.03, 0.004), ctx.mats.getBasic('brass'), 0, 1.7, D / 2 + 0.025, false));
+  g.userData.rigid = true;
   return { group: g, doors };
 }
 
@@ -335,8 +338,8 @@ export function clothesLine(ctx: WorldCtx, a: THREE.Vector3, b: THREE.Vector3, r
     const t = (i + 0.5 + rng.range(-0.2, 0.2)) / count;
     const p = a.clone().lerp(b, t);
     p.y -= Math.sin(t * Math.PI) * 0.06;
-    const w = rng.range(0.35, 0.6);
-    const h = rng.range(0.45, 0.9);
+    const w = rng.range(0.3, outdoor ? 0.6 : 0.42);
+    const h = rng.range(0.4, outdoor ? 0.9 : 0.6);
     const geo = new THREE.PlaneGeometry(w, h, 6, 8);
     geo.translate(0, -h / 2, 0);
     const pos = geo.getAttribute('position') as THREE.BufferAttribute;
@@ -368,6 +371,7 @@ export function crtTv(ctx: WorldCtx): THREE.Group {
   g.add(mesh(rbox(0.62, 0.48, 0.5, 0.03), body, 0, 0.24, 0));
   const screen = mesh(rbox(0.48, 0.36, 0.02, 0.03), ctx.mats.getBasic('screen_off'), 0, 0.26, 0.25, false);
   screen.name = 'screen';
+  screen.userData.keep = true;
   g.add(screen);
   return g;
 }

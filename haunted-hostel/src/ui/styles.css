@@ -783,6 +783,14 @@ input[type='range']::-moz-range-thumb {
     opacity: 0;
   }
 }
+@keyframes fadeInFull {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
 .chapter-card {
   position: absolute;
   inset: 0;
@@ -1706,7 +1714,7 @@ input[type='range']::-moz-range-thumb {
   color: var(--ink-dim);
   white-space: pre-line;
   opacity: 0;
-  animation: fadeIn 3s 1.2s forwards;
+  animation: fadeInFull 3s 1.2s forwards;
 }
 .ending .stats {
   font: 500 11px var(--font-ui);
@@ -1724,7 +1732,7 @@ input[type='range']::-moz-range-thumb {
   flex-wrap: wrap;
   justify-content: center;
   opacity: 0;
-  animation: fadeIn 1s 4s forwards;
+  animation: fadeInFull 1s 4s forwards;
 }
 .fader {
   position: absolute;
@@ -1788,4 +1796,17 @@ input[type='range']::-moz-range-thumb {
   100% {
     transform: rotate(-90deg);
   }
+}
+
+/* Touch layout: keep notifications clear of the right-hand thumb buttons. */
+.hud.touch .pickup {
+  right: auto;
+  left: calc(var(--s3) + var(--safe-l));
+  bottom: auto;
+  top: calc(96px + var(--safe-t));
+  align-items: flex-start;
+}
+.hud.touch .pickup div {
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0));
+  padding: 8px 40px 8px 12px;
 }

@@ -233,7 +233,7 @@ export class CctvSystem {
     this.finale = 7;
     this.camButtons.forEach((b) => b.classList.remove('motion'));
     this.select(0);
-    this.phantom.snapIn(new THREE.Vector3(12.3, 0, 4.4), Math.PI / 2);
+    this.phantom.snapIn(new THREE.Vector3(14.05, 0, 2.45), Math.PI / 2);
     this.phantom.play('standStill');
     bus.emit('scare', { kind: 'cctvBehind' });
   }

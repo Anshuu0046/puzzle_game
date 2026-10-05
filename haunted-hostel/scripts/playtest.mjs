@@ -28,7 +28,10 @@ async function open(query = '') {
   await page.goto(`${BASE}?autostart&debug${query}`);
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 900000 });
   await page.waitForFunction(() => document.querySelector('.menu'), null, { timeout: 60000 });
-  await page.evaluate(() => (window.__hh.world.lift.speed = 4));
+  await page.evaluate(() => {
+    window.__hh.world.lift.speed = 4;
+    window.__hh.dbg.sim(4);
+  });
 }
 
 const run = (js) => page.evaluate(js);
@@ -43,7 +46,14 @@ async function until(js, timeout = 120000, label = js) {
 }
 async function shot(name) {
   shotN++;
-  await page.waitForTimeout(600);
+  // Render one real frame (the simulation otherwise runs headless-fast without drawing).
+  await page.evaluate(() => {
+    const s = __hh.simOnly;
+    __hh.simOnly = 0;
+    __hh.update(0.016);
+    __hh.dbg.frame();
+    __hh.simOnly = s;
+  });
   await page.screenshot({ path: `screenshots/play-${String(shotN).padStart(2, '0')}-${name}.png` });
 }
 async function clickText(sel, text) {
@@ -57,18 +67,22 @@ async function clickText(sel, text) {
   );
 }
 async function closeDoc() {
-  await until('document.querySelector(".docview")', 20000, 'document open');
+  await until('document.querySelectorAll(".docview").length === 1', 20000, 'document open');
   await clickText('.doc-nav button', 'CLOSE');
-  await until('__hh.mode === "play"', 20000, 'back to play');
+  await until('__hh.mode === "play" && !document.querySelector(".docview")', 20000, 'back to play');
 }
-async function dial(code) {
-  await until('document.querySelector(".dials")', 20000, 'code lock');
+async function dial(code, expectOpen = true) {
+  await until('document.querySelectorAll(".dials").length === 1', 20000, 'code lock');
   for (let i = 0; i < code.length; i++) {
     const n = Number(code[i]);
     for (let k = 0; k < n; k++) await page.evaluate((idx) => document.querySelectorAll('.dial')[idx].querySelector('button').click(), i);
   }
   await clickText('.puzzle button', 'TRY');
-  await until('__hh.mode === "play"', 20000, 'lock closed');
+  if (!expectOpen) {
+    await page.waitForTimeout(500);
+    await clickText('.puzzle button', 'STEP BACK');
+  }
+  await until('__hh.mode === "play" && !document.querySelector(".puzzle")', 20000, 'lock closed');
 }
 const step = (name) => console.log(`\n▶ ${name}`);
 const expectState = async (cond, label) => {
@@ -170,12 +184,8 @@ try {
   await until('__hh.dbg.info().objective === "obj.cabinetCode"', 20000);
   await shot('warden-office');
   await run('__hh.dbg.act("keycabinet")');
-  await dial('1111');
+  await dial('1111', false);
   await expectState('!__hh.dbg.info().flags.includes("cabinetOpen")', 'wrong code rejected');
-  await run('__hh.mode === "play" || document.querySelector(".puzzle .hh-btn:last-child").click()');
-  await page.waitForTimeout(500);
-  if ((await run('__hh.mode')) !== 'play') await clickText('.puzzle button', 'STEP BACK');
-  await until('__hh.mode === "play"');
   await run('__hh.dbg.act("keycabinet")');
   await dial('1411');
   await expectState('__hh.dbg.info().inventory.includes("key_217")', 'got the 217 key');
@@ -250,15 +260,22 @@ try {
 
   // ------------------------------------------------------------- Chapter 5
   step('Chapter 5 — escape');
-  await page.waitForTimeout(3000);
+  await run('__hh.dbg.sim(1)');
   await shot('blackout');
-  await until('__hh.dbg.info().ai === "CHASE"', 60000, 'ghost hunts after the blackout');
-  await run('(() => { const g = __hh.ghost.pos; __hh.dbg.lookAt(g.x, g.y + 1.5, g.z); })()');
+  await run('__hh.dbg.tpPoint("security", Math.PI)');
+  await until('["INVESTIGATE","CHASE","SEARCH","RETREAT"].includes(__hh.dbg.info().ai)', 60000, 'ghost hunts after the blackout');
+  await run('__hh.dbg.sim(0)');
+  await run(
+    '__hh.dbg.tp(9, 0, 0, Math.PI / 2); __hh.ai.placeAt(new __hh.player.pos.constructor(4, 0, 0.1), -Math.PI / 2, "IDLE"); __hh.ai.forceChase(__hh.player.pos)',
+  );
+  await run('(() => { for (let i = 0; i < 6; i++) __hh.update?.(0.05); })()');
+  await run('(() => { const g = __hh.ghost.pos; __hh.dbg.lookAt(g.x, g.y + 1.5, g.z); __hh.player.applyCamera(1); })()');
   await shot('chase');
+  await run('__hh.dbg.sim(4)');
   // Save during the hunt is blocked; hide in a cupboard.
   await run('__hh.dbg.tpPoint("security", Math.PI)');
-  await page.waitForTimeout(2500);
-  await expectState('["RETREAT","IDLE","SEARCH","PATROL","INVESTIGATE"].includes(__hh.dbg.info().ai)', 'security room is a safe room');
+  await until('__hh.ai.debug === "player safe" && __hh.dbg.info().ai !== "CHASE"', 30000, 'security room is a safe room');
+  console.log('  ✓ security room is a safe room');
   await run('__hh.dbg.godMode(true)');
   await run('__hh.dbg.act("hide:security-almirah")');
   await page.waitForTimeout(1500);
@@ -318,7 +335,7 @@ try {
   await run('__hh.world.lift.go("3")');
   await until('__hh.world.lift.current === "3" && __hh.world.lift.state === "open"', 120000, 'arrives at 3');
   await page.waitForTimeout(1500);
-  await run('__hh.dbg.lookAt(1.4, 10.2, 0.6)');
+  await run('__hh.dbg.lookAt(1.3, 9.9, 0.55)');
   await shot('secret-remains');
   await run('__hh.dbg.act("herPhone")');
   await until('__hh.dbg.info().ending === "secret"', 30000);

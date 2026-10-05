@@ -87,6 +87,8 @@ export class Game {
   scarePulse = 0;
   phoneCamera = false;
   readonly debug = location.search.includes('debug');
+  /** Automation: fixed 50 ms steps per animation frame with rendering disabled (0 = off). */
+  simOnly = 0;
 
   constructor() {
     const canvas = document.getElementById('game') as HTMLCanvasElement;
@@ -169,6 +171,7 @@ export class Game {
     const appBody = new GhostBody(scene, this.mats);
     this.apparitions = new ApparitionSystem(appBody, ctx.col);
     this.cctvPhantom = new GhostBody(scene, this.mats, CCTV_LAYER);
+    this.cctvPhantom.rig.uniforms.uGlow.value = 6;
     this.mirrorPhantom = new GhostBody(scene, this.mats, MIRROR_LAYER);
     this.phonePhantom = new GhostBody(scene, this.mats, PHONE_LAYER);
     this.cctv = new CctvSystem(ctx, this.cctvPhantom);
@@ -180,6 +183,7 @@ export class Game {
     });
     this.events = new RandomEvents(this);
     this.story = new Story(this);
+    this.buildCullList();
     setUnboundHandler((_id, d) => {
       if (d.inspect) this.hud.toast(d.inspect, 6);
       else this.hud.toast('inspect.generic');
@@ -222,6 +226,68 @@ export class Game {
     });
   }
 
+  private cullList: { o: THREE.Object3D; c: THREE.Vector3; r: number; indoor: boolean }[] = [];
+  private cullT = 0;
+
+  /**
+   * Cheap interior culling: furniture, doors, fixtures and decals inside the building are hidden
+   * when they are far away or on another storey (walls and slabs hide them anyway). Static
+   * architecture is handled by batching + frustum culling.
+   */
+  private buildCullList(): void {
+    const box = new THREE.Box3();
+    for (const o of this.engine.scene.children) {
+      if (!o.userData.dynamic || o.userData.noCull || (o as THREE.Light).isLight || o.name === 'ghost' || o.name === 'liftCar') continue;
+      if ((o as THREE.Mesh).isMesh && !(o as THREE.Mesh).frustumCulled) continue;
+      box.setFromObject(o, false);
+      if (box.isEmpty()) continue;
+      const c = box.getCenter(new THREE.Vector3());
+      const r = box.getSize(new THREE.Vector3()).length() / 2;
+      const indoor = c.x > -0.3 && c.x < XMAX + 0.3 && Math.abs(c.z) < OUTER + 0.3 && c.y < 10.1;
+      this.cullList.push({ o, c, r, indoor });
+    }
+    // Shadow casters for the flashlight: only those near the camera are drawn into its shadow map.
+    const sphere = new THREE.Sphere();
+    this.engine.scene.updateMatrixWorld(true);
+    this.engine.scene.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh || !m.castShadow || m.userData.archCaster) return;
+      let p: THREE.Object3D | null = m;
+      while (p) {
+        if (p.name === 'ghost' || p.name === 'liftCar') return;
+        p = p.parent;
+      }
+      if (!m.geometry.boundingSphere) m.geometry.computeBoundingSphere();
+      sphere.copy(m.geometry.boundingSphere!).applyMatrix4(m.matrixWorld);
+      this.casters.push({ m, c: sphere.center.clone(), r: sphere.radius });
+    });
+  }
+
+  private readonly casters: { m: THREE.Mesh; c: THREE.Vector3; r: number }[] = [];
+
+  private updateCulling(dt: number): void {
+    this.cullT -= dt;
+    if (this.cullT > 0) return;
+    this.cullT = 0.2;
+    const cam = this.engine.camera.position;
+    const outside = this.player.outdoors || this.mode === 'cctv';
+    const camFloor = Math.round((cam.y - 1.4) / 3.4);
+    const ref = this.mode === 'cctv' ? this.cctv.camera.position : cam;
+    for (const s of this.casters) s.m.castShadow = s.c.distanceTo(cam) - s.r < 9;
+    for (const e of this.cullList) {
+      const d = e.c.distanceTo(ref) - e.r;
+      let vis: boolean;
+      if (!e.indoor) vis = d < 60;
+      else if (outside) vis = d < 34;
+      else vis = d < 26 && Math.abs(Math.round((e.c.y - 1.4) / 3.4) - camFloor) <= (d < 6 ? 1 : 0);
+      void 0;
+      if (e.o.userData.cullHidden !== !vis) {
+        e.o.userData.cullHidden = !vis;
+        if (!e.o.userData.storyHidden) e.o.visible = vis;
+      }
+    }
+  }
+
   /** Bathroom mirror: a real planar reflection that also sees the mirror-only phantom. */
   private buildMirror(): void {
     const p = this.world.ctx.points.get('mirrorBath');
@@ -236,7 +302,7 @@ export class Game {
       clipBias: 0.003,
       multisample: 0,
     });
-    m.position.set(p.x, p.y + 1.55, p.z);
+    m.position.set(p.x, p.y, p.z);
     m.rotation.y = yaw.x;
     m.getReflectionCamera(this.engine.camera).layers.enable(MIRROR_LAYER);
     this.engine.scene.add(m);
@@ -665,6 +731,11 @@ export class Game {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       try {
+        if (this.simOnly > 0) {
+          // Test mode: advance the simulation in fixed steps without drawing.
+          for (let i = 0; i < this.simOnly; i++) this.update(0.05);
+          return;
+        }
         this.update(dt);
         this.render();
       } catch (err) {
@@ -686,11 +757,10 @@ export class Game {
     requestAnimationFrame(frame);
   }
 
-  private lastDt = 1 / 60;
+  private cctvGlitch = 0;
 
   private update(dt: number): void {
     this.time += dt;
-    this.lastDt = dt;
     const input = this.input;
     input.poll();
     const playing = this.mode === 'play';
@@ -748,6 +818,8 @@ export class Game {
       if (playing) this.events.update(dt);
     }
     this.apparitions.update(dt, this.engine.camera);
+    this.updateCulling(dt);
+    if (this.mode === 'cctv') this.cctvGlitch = this.cctv.update(dt).glitch;
     this.mirrorPhantom.update(dt, this.time, 0, 99);
     this.phonePhantom.update(dt, this.time, 0, 99);
     this.phone.update(dt);
@@ -947,9 +1019,8 @@ export class Game {
   private render(): void {
     const fx = this.engine.fx.uniforms;
     if (this.mode === 'cctv') {
-      const { glitch } = this.cctv.update(this.lastDt);
       fx.uCctv!.value = 1;
-      fx.uGlitch!.value = Math.max(glitch, fx.uGlitch!.value as number);
+      fx.uGlitch!.value = Math.max(this.cctvGlitch, fx.uGlitch!.value as number);
       const main = this.engine.camera;
       (this.engine.composer.passes[0] as unknown as { camera: THREE.Camera }).camera = this.cctv.camera;
       this.engine.render();
@@ -957,7 +1028,22 @@ export class Game {
       return;
     }
     fx.uCctv!.value = 0;
+    const moon = this.weather.moon;
+    const refreshMoon = moon.castShadow && moon.shadow.needsUpdate;
+    if (refreshMoon) this.setArchCasters(true);
     this.engine.render();
+    if (refreshMoon) this.setArchCasters(false);
+  }
+
+  private archCasters: THREE.Mesh[] | null = null;
+  private setArchCasters(on: boolean): void {
+    if (!this.archCasters) {
+      this.archCasters = [];
+      this.engine.scene.traverse((o) => {
+        if (o.userData.archCaster) this.archCasters!.push(o as THREE.Mesh);
+      });
+    }
+    for (const m of this.archCasters) m.castShadow = on;
   }
 
   /** Debug helpers for tests and screenshots (window.__hh). */
@@ -1007,12 +1093,16 @@ export class Game {
         lift: `${this.world.lift.current}:${this.world.lift.state}`,
         scares: [...state.scaresUsed],
         ending: state.ending,
+        playTime: Math.round(state.playTime),
         prompt: this.interaction.prompt,
         calls: this.engine.renderer.info.render.calls,
         tris: this.engine.renderer.info.render.triangles,
       }),
       give: (id: string) => state.give(id),
       setChapter: (n: number) => (state.chapter = n),
+      power: (c: 'GF' | 'FF' | 'SF' | 'EMERGENCY', on: boolean) => power.set(c, on),
+      sim: (steps: number) => (this.simOnly = steps),
+      frame: () => this.render(),
       flag: (f: string) => state.set(f),
       godMode: (on: boolean) => {
         this.ai.aggression = on ? 0 : 0.5;

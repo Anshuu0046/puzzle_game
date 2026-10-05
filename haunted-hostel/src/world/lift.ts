@@ -104,6 +104,7 @@ export class Lift {
       panel.add(t);
     });
     panel.position.set(W / 2 - 0.03, 1.2, -D / 2 + 0.25);
+    panel.userData.anim = true;
     car.add(panel);
     this.carDisplay = new DynamicLabel(128, 64);
     this.carDisplay.set('G');
@@ -128,6 +129,9 @@ export class Lift {
         );
       }
     this.grille.position.set(-W / 2 + 0.05, 0, -D / 2 + 0.03);
+    this.grille.userData.anim = true;
+    this.grille.userData.rigid = true;
+    car.userData.rigid = true;
     car.add(this.grille);
     car.position.set(cx, 0, cz);
     car.traverse((o) => {
@@ -138,6 +142,7 @@ export class Lift {
       }
     });
     markDynamic(car);
+    car.name = 'liftCar';
     ctx.scene.add(car);
     // Car colliders (moved every frame).
     const mk = (minX: number, maxX: number, minZ: number, maxZ: number, minY: number, maxY: number) =>

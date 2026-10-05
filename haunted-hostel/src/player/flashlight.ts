@@ -36,7 +36,7 @@ export class Flashlight {
       this.light.shadow.bias = -0.0004;
       this.light.shadow.normalBias = 0.02;
       this.light.shadow.camera.near = 0.15;
-      this.light.shadow.camera.far = 26;
+      this.light.shadow.camera.far = 16;
       this.light.map = makeCookie();
     }
     this.pivot.add(this.light);

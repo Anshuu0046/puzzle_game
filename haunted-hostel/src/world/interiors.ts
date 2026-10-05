@@ -70,6 +70,7 @@ export class RoomFrame {
     obj.rotation.y = this.rot(ry);
     obj.updateMatrixWorld(true);
     if (dynamic) {
+      if (!obj.userData.noMerge) obj.userData.rigid = true;
       markDynamic(obj);
       this.ctx.scene.add(obj);
     } else this.ctx.batch.addObject(obj);
@@ -264,7 +265,7 @@ function dormRoom(
   f.put(bucket(ctx, rng.pick(['plastic_red', 'plastic_blue', 'plastic_green'])), rng.range(0.4, 0.8), rng.range(0.5, 0.9), rng.range(0, 6));
   f.put(slippers(ctx, rng), 1.6, 0.6, rng.range(-0.5, 0.5));
   f.put(trunk(ctx), bedBPos[0] + (v === 1 ? 0 : 0), bedBPos[1] + (v === 1 ? -0.1 : 0.2), bedBPos[2] + Math.PI / 2);
-  const line = clothesLine(ctx, f.pos(0.05, d * 0.7, 2.2), f.pos(w - 0.05, d * 0.66, 2.25), rng, rng.int(2, 4));
+  const line = clothesLine(ctx, f.pos(0.05, d * 0.45, 2.45), f.pos(w - 0.05, d * 0.42, 2.5), rng, rng.int(1, 2));
   markDynamic(line);
   ctx.scene.add(line);
   // Posters / wall art.

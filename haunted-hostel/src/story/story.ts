@@ -50,7 +50,6 @@ export class Story {
   private curtainPuff = 0;
   private tvOnT = 0;
   private liftScareT = 0;
-  private finalChaseArmed = false;
 
   constructor(private readonly g: Game) {
     for (const [id, d] of g.world.doors) this.initialDoors.set(id, { lock: d.lock, open: d.isOpen });
@@ -128,7 +127,10 @@ export class Story {
 
   private take(objId: string, item?: string): void {
     const o = this.obj(objId);
-    if (o) o.visible = false;
+    if (o) {
+      o.visible = false;
+      o.userData.storyHidden = true;
+    }
     this.set(`took:${objId}`);
     if (item) state.give(item);
   }
@@ -184,6 +186,7 @@ export class Story {
     g.add(id, photo, diary, bowl, flame, glow);
     g.position.copy(rp);
     g.visible = false;
+    g.userData.noCull = true;
     scene.add(g);
     this.ritualGroup = g;
     this.diyaFixture = registerFixture(ctx, {
@@ -201,7 +204,6 @@ export class Story {
       buzz: false,
     });
     this.diyaFixture.forced = 0;
-    this.g.lighting?.get?.('ritualDiya');
     ctx.animated.push({ update: (_dt, time) => (flame.scale.y = 1 + Math.sin(time * 17) * 0.15 + Math.sin(time * 7.3) * 0.1) });
 
     // Behind the bricks: a shape under her purple dupatta, her slippers, her phone still lit.
@@ -242,6 +244,7 @@ export class Story {
     r.add(stain);
     r.position.copy(vp).add(V(-0.4, 0.002, -0.05));
     r.visible = false;
+    r.userData.noCull = true;
     r.traverse((o) => (o.userData.dynamic = true));
     scene.add(r);
     this.remains = r;
@@ -561,7 +564,7 @@ export class Story {
         this.remains.visible = true;
         lift.dwell = 9999;
         bus.emit('musicState', { state: 'DISCOVERY' });
-        this.after(1.5, () => this.say('The bricks are gone. As if they were never there.', 5));
+        this.after(1.5, () => this.say('She was here. Between the lift and the bricks. All this time.', 5));
         return;
       }
       // The floor that doesn't exist: doors open on the bricked-up landing.
@@ -905,10 +908,11 @@ export class Story {
     g.ai.deactivate();
     this.after(4, () => {
       g.ai.allowedFloors = new Set([0, 2]);
-      g.ai.placeAt(V(19, 0, 0.2), Math.PI / 2, 'IDLE');
-      g.ai.aggression = 0.85;
-      g.ai.forceChase(this.p);
-      g.audio.play('ghostScream', { pos: V(19, 1.6, 0), volume: 1 });
+      // She appears at the far end of the ground floor and comes looking — the hunt builds.
+      g.ai.placeAt(V(2.2, 0, 0.2), -Math.PI / 2, 'IDLE');
+      g.ai.aggression = 0.8;
+      g.ai.investigate(this.p);
+      g.audio.play('ghostScream', { pos: V(2.2, 1.6, 0), volume: 1 });
     });
     g.checkpoint();
   }
@@ -1154,7 +1158,6 @@ export class Story {
     if (state.chapter === 5 && state.objective === 'obj.findDiya' && state.has('diya')) this.objective('obj.ritual');
     // CCTV-only phantom outside CCTV mode stays hidden.
     if (g.mode === 'play' && !g.cctv.active) g.cctvPhantom.hide();
-    void this.finalChaseArmed;
   }
 
   // -------------------------------------------------------------------------------------------
@@ -1173,8 +1176,10 @@ export class Story {
       d.snap(init.open);
     }
     for (const [id, o] of this.ctx.objects) {
-      if (['id_card', 'photo', 'diary', 'final_evidence', 'diya', 'battery_security', 'battery_212', 'battery_study'].includes(id))
+      if (['id_card', 'photo', 'diary', 'final_evidence', 'diya', 'battery_security', 'battery_212', 'battery_study'].includes(id)) {
         o.visible = true;
+        o.userData.storyHidden = false;
+      }
     }
     this.ritualGroup.visible = false;
     this.diyaFixture.forced = 0;
@@ -1207,7 +1212,10 @@ export class Story {
     for (const f of state.flags) {
       if (f.startsWith('took:')) {
         const o = this.obj(f.slice(5));
-        if (o) o.visible = false;
+        if (o) {
+          o.visible = false;
+          o.userData.storyHidden = true;
+        }
       }
     }
     if (this.flag('liftScare')) this.set('liftScare');

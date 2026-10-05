@@ -33,6 +33,8 @@ export interface DoorSpec {
   scratched?: boolean;
   sealPaper?: boolean;
   openAtStart?: number;
+  /** Never opens: bake into static geometry (keeps collider + interaction proxy). */
+  permanent?: boolean;
 }
 
 /**
@@ -138,6 +140,7 @@ export class Door {
       pl.add(shackle);
       pl.position.set(w - ft - 0.02, 1.18, latchZ + (ps > 0 ? 0.02 : -0.02));
       pl.rotation.z = 0.15;
+      pl.userData.anim = true;
       root.add(pl);
       this.padlock = pl;
     }
@@ -153,6 +156,7 @@ export class Door {
       seal.position.set(w / 2, 1.2, ps > 0 ? T / 2 + 0.035 : -T / 2 - 0.035);
       if (ps < 0) seal.rotation.y = Math.PI;
       if (this.mirror) seal.scale.x = -1;
+      seal.userData.anim = true;
       root.add(seal);
       this.seal = seal;
     }
@@ -172,6 +176,9 @@ export class Door {
     root.traverse((o) => {
       o.userData.dynamic = true;
     });
+    root.userData.rigid = true;
+    this.pivot.userData.anim = true;
+    this.pivot.userData.rigid = true;
 
     // Colliders in world space.
     root.updateMatrixWorld(true);
@@ -190,6 +197,18 @@ export class Door {
       prompt: () => this.prompt(),
       onInteract: () => this.interact(),
     });
+    if (spec.permanent) {
+      // Bake everything except the hit proxy into the static batch.
+      proxy.removeFromParent();
+      root.traverse((o) => (o.userData.dynamic = false));
+      root.updateMatrixWorld(true);
+      ctx.batch.addObject(root);
+      root.clear();
+      root.add(proxy);
+      proxy.userData.dynamic = true;
+      root.userData.rigid = false;
+      root.updateMatrixWorld(true);
+    }
     if (spec.openAtStart) {
       this.angle = this.target = spec.openAtStart * this.openAngle;
       this.pivot.rotation.y = this.angle;
