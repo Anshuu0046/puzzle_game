@@ -611,7 +611,7 @@ function ghostSkin(): Recipe {
   return ({ n, m }) =>
     (u, v, p) => {
       const g = n.fbm(u, v, 14, 5);
-      set3(p, [0.66, 0.66, 0.6], 0.82 + g * 0.18);
+      set3(p, [0.5, 0.52, 0.48], 0.78 + g * 0.22);
       const vein = n.ridged(u, v, 5, 5);
       if (vein > 0.82) mix3(p, [0.25, 0.3, 0.38], smoothstep(0.82, 0.95, vein) * 0.6);
       const bruise = smoothstep(0.58, 0.8, m.fbm(u, v, 4, 5));
@@ -631,11 +631,13 @@ function ghostCloth(): Recipe {
   return ({ n, m }) =>
     (u, v, p) => {
       const weave = Math.sin(u * 900) * Math.sin(v * 900) * 0.5 + 0.5;
-      set3(p, [0.72, 0.7, 0.62], 0.85 + weave * 0.08);
+      set3(p, [0.6, 0.57, 0.5], 0.8 + weave * 0.1);
       const print = n.value(u * 30, v * 30, 30);
       if (print > 0.82) mix3(p, [0.5, 0.42, 0.5], 0.25);
-      const grime = smoothstep(0.45, 0.85, m.fbm(u, v, 4, 5) + smoothstep(0.3, 0, v) * 0.35);
-      mix3(p, [0.25, 0.22, 0.17], grime * 0.7);
+      const grime = smoothstep(0.38, 0.8, m.fbm(u, v, 5, 5) + smoothstep(0.35, 0, v) * 0.4);
+      mix3(p, [0.2, 0.18, 0.14], grime * 0.85);
+      const water = smoothstep(0.55, 0.75, n.fbm(u * 0.5, v * 2, 3, 4));
+      mul(p, 1 - water * 0.25);
       const blood = smoothstep(0.74, 0.78, n.fbm(u + 8, v, 5, 5));
       mix3(p, [0.22, 0.04, 0.03], blood * 0.85);
       p.rough = 0.92;

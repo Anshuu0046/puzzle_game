@@ -125,12 +125,12 @@ function headGeometry(): THREE.BufferGeometry {
 /** Long hair as hundreds of ribbon strands, merged into one mesh. Roots on the scalp. */
 function hairGeometry(rng: Rng): THREE.BufferGeometry {
   const strands: THREE.BufferGeometry[] = [];
-  const N = 240;
+  const N = 340;
   for (let i = 0; i < N; i++) {
     // Root on the upper skull, biased to the back and the crown; some at the front fall over the face.
     const theta = rng.range(0, Math.PI * 2);
     const phi = rng.range(0.05, Math.PI * 0.55);
-    const front = Math.cos(theta) > 0.75;
+    const front = Math.cos(theta) > 0.55;
     const root = new THREE.Vector3(
       Math.sin(phi) * Math.sin(theta) * 0.086,
       Math.cos(phi) * 0.118 + 0.005,
@@ -239,12 +239,14 @@ function ghostify(mat: THREE.MeshStandardMaterial, u: GhostRig['uniforms'], sway
 
 export function buildGhost(mats: MaterialLibrary): GhostRig {
   const rng = new Rng(1411);
-  const uniforms = { uDissolve: { value: 0 }, uTime: { value: 0 }, uSwing: { value: 0 }, uGlow: { value: 1 } };
+  const uniforms = { uDissolve: { value: 0 }, uTime: { value: 0 }, uSwing: { value: 0 }, uGlow: { value: 0.45 } };
   const skin = ghostify(mats.get('ghost_skin', 0.5), uniforms, 'none');
-  skin.roughness = 0.7;
+  skin.roughness = 0.85;
+  skin.envMapIntensity = 0.15;
   const face = ghostify(mats.get('ghost_skin', 0.3), uniforms, 'none');
   face.vertexColors = true;
   const cloth = ghostify(mats.get('ghost_cloth', 0.6), uniforms, 'cloth');
+  cloth.envMapIntensity = 0.1;
   const salwar = ghostify(mats.get('ghost_cloth', 0.6), uniforms, 'cloth');
   salwar.color.setHex(0x8a7f88);
   const hairM = ghostify(mats.get('hair', 1), uniforms, 'hair');
@@ -333,11 +335,11 @@ export function buildGhost(mats: MaterialLibrary): GhostRig {
   // Shoulders, arms (with sleeves to the elbow), long-fingered hands.
   const armSide = (s: 1 | -1) => {
     const shoulder = node(chest, s * 0.16, 0.2, -0.01, s < 0 ? 'shoulderL' : 'shoulderR');
-    add(shoulder, limb(0.29, 0.038, 0.03), skin);
-    const sleeve = add(shoulder, limb(0.24, 0.058, 0.055, 16), cloth, 0, 0.01, 0);
+    add(shoulder, limb(0.29, 0.027, 0.022), skin);
+    const sleeve = add(shoulder, limb(0.26, 0.05, 0.047, 16), cloth, 0, 0.01, 0);
     sleeve.scale.set(1, 1, 0.9);
     const elbow = node(shoulder, 0, -0.29, 0, s < 0 ? 'elbowL' : 'elbowR');
-    add(elbow, limb(0.27, 0.028, 0.02), skin);
+    add(elbow, limb(0.27, 0.022, 0.016), skin);
     const wrist = node(elbow, 0, -0.27, 0, s < 0 ? 'wristL' : 'wristR');
     const palm = add(wrist, limb(0.08, 0.022, 0.018, 10), skin);
     palm.scale.set(1.3, 1, 0.55);
