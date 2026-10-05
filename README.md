@@ -59,8 +59,3 @@ from the rules.
 `npm run build` produces a static site in `dist/` with relative asset paths, so it can be hosted
 from any path (GitHub Pages, Netlify, S3, itch.io). It is an installable PWA that works offline
 after the first visit.
-
-## Also in this repository
-
-[`haunted-hostel/`](haunted-hostel/README.md) — _Haunted Hostel_, a separate first-person 3D survival horror game (Three.js +
-TypeScript, Capacitor for Android). It has its own `package.json`, tests and build.
